@@ -312,6 +312,7 @@ tr.flash td{animation:rowfl 1.4s ease-out}
 .whowrap{position:relative;display:inline-flex}
 .whopanel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;min-width:210px;max-width:80vw;background:var(--surface);border:1px solid var(--line-2);border-radius:12px;padding:8px 6px;box-shadow:0 8px 28px rgba(0,0,0,.14);font-size:13.5px}
 .whopanel h4{margin:2px 10px 6px;font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.whopanel::before{content:'';position:absolute;left:0;right:0;top:-8px;height:8px}
 .whopanel .wr{display:flex;align-items:center;gap:8px;padding:5px 10px;color:var(--ink)}
 .whopanel .wr small{margin-left:auto;color:var(--muted)}
 .whopanel .wr.off{color:var(--muted)}
@@ -973,9 +974,14 @@ function beat(){
 }
 setInterval(()=>{beat();renderWho();},20000);
 document.addEventListener("visibilitychange",()=>{if(!document.hidden)beat();});
+(function(){
+  const w=$("#whoWrap");if(!w)return;
+  w.addEventListener("mouseenter",()=>{const pn=$("#whoPanel");pn.hidden=false;renderWho();});
+  w.addEventListener("mouseleave",()=>{$("#whoPanel").hidden=true;});
+})();
 document.addEventListener("click",e=>{
   const pn=$("#whoPanel");if(!pn)return;
-  if(e.target.closest("#whoChip")){pn.hidden=!pn.hidden;renderWho();}
+  if(e.target.closest("#whoChip")){pn.hidden=false;renderWho();}
   else if(!e.target.closest("#whoPanel"))pn.hidden=true;
 });
 function setLive(){
