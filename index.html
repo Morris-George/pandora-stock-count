@@ -188,6 +188,7 @@ table{min-width:420px}
 tr.hzero td{opacity:.55}
 .hrm:disabled{opacity:.35;cursor:default}
 .pm{display:inline-flex;gap:4px}
+.urm{margin-top:6px;color:var(--bad)}
 .hrm{border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:18px;padding:2px 8px;border-radius:8px}.hrm:hover{color:var(--bad,#c33)}
 .tablecard td.item{max-width:0;width:100%}
 tr.rok td{background:var(--ok-bg)}
@@ -684,7 +685,8 @@ function compute(){
       u.last=s.t;u.by=s.by;
     }
   }
-  st.unknown.forEach(u=>{u.units=Math.max(0,u.units);u.units1=Math.max(0,u.units1);st.unknownUnits+=u.units;});
+  st.unknown.forEach(u=>{u.units=Math.max(0,u.units);u.units1=Math.max(0,u.units1);});
+  for(const [k,u] of [...st.unknown]){if(u.units===0&&u.units1===0&&u.re===null)st.unknown.delete(k);else st.unknownUnits+=u.units;}
   st.actual+=st.unknownUnits;
   st.team=[...tm.values()].sort((a,b)=>b.units-a.units);
   ST=st;return st;
@@ -870,7 +872,7 @@ function histGroups(){
     if(x.m===2)g.units=Math.max(0,x.n);else g.units+=x.n;
     if(x.t>=g.last){g.last=x.t;g.by=x.by;g.raw=x.raw;}
   }
-  return [...m.values()].map(g=>(g.units=Math.max(0,g.units),g));
+  return [...m.values()].map(g=>(g.units=Math.max(0,g.units),g)).filter(g=>g.i>=0||g.rc||g.units>0);
 }
 function renderHist(){
   const zs=[...new Set(S.scans.map(x=>x.z).filter(Boolean))].sort();
@@ -969,7 +971,7 @@ function renderTable(){
   const rows=[];
   for(const u of unk){
     const key="u:"+u.raw,z=zonesFor(x=>x.i<0&&x.raw===u.raw);
-    rows.push(`<tr class="rwarn"><td class="item"><div class="t1 mono">${esc(u.raw)}<span class="tag">Not in ERP</span></div><div class="t2">Scanned by ${esc(u.by||"")} at ${clock(u.last)}</div>${zbtn(key,z.length)}</td><td class="r num mono">–</td><td class="r num mono">${fmt(u.units1)}</td><td class="r"><span class="pill pos">${signed(u.units1)}</span></td><td class="r">${inp(key,u.re)}</td><td class="r">${finalCell(u.re,u.units)}</td></tr>`+zrow(key,z));
+    rows.push(`<tr class="rwarn"><td class="item"><div class="t1 mono">${esc(u.raw)}<span class="tag">Not in ERP</span></div><div class="t2">Scanned by ${esc(u.by||"")} at ${clock(u.last)}</div>${zbtn(key,z.length)}${locked()?"":`<button type="button" class="btn sm urm" data-raw="${esc(u.raw)}">Remove this scan</button>`}</td><td class="r num mono">–</td><td class="r num mono">${fmt(u.units1)}</td><td class="r"><span class="pill pos">${signed(u.units1)}</span></td><td class="r">${inp(key,u.re)}</td><td class="r">${finalCell(u.re,u.units)}</td></tr>`+zrow(key,z));
   }
   const room=Math.max(0,ui.limit-rows.length);
   for(const it of list.slice(0,room)){
@@ -1863,6 +1865,17 @@ $("#phoneBtn").addEventListener("click",openPhoneModal);
 $("#phClose").addEventListener("click",()=>{$("#phoneModal").hidden=true;});
 $("#phCopy").addEventListener("click",async()=>{const el=$("#phLink");try{await navigator.clipboard.writeText(el.value);}catch(e){el.select();document.execCommand&&document.execCommand("copy");}toast("Link copied");});
 document.addEventListener("keydown",e=>{if(e.key==="Escape"&&cam.on)closeCam();});
+
+$("#tbl").addEventListener("click",e=>{
+  const bt=e.target.closest(".urm");if(!bt||locked())return;
+  const raw=bt.dataset.raw;
+  const gs=histGroups().filter(g=>g.i<0&&g.raw===raw&&!g.rc&&g.units>0);
+  if(!gs.length)return;
+  const b=getBlock(),t=Date.now();
+  gs.forEach(g=>b.scans.push([t,raw,-1,-g.units,g.z,0,g.by||""]));
+  markDirty(b);mergeScans();rebuildCounts();scheduleRender();
+  toast("Removed "+raw);
+});
 
 /* ---------- start ---------- */
 async function start(){
