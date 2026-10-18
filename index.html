@@ -205,6 +205,13 @@ th .hint{display:block;font:500 10px var(--font-body);color:var(--muted);text-tr
 .pill.zero{background:var(--ok-bg);color:var(--ok);border:1px solid var(--ok)}
 tfoot tr.trow td{border-top:2px solid var(--line-2);font-size:15px}
 tfoot tr:not(.trow) td{position:static;border-top:0;padding-top:4px}
+.lib{margin-top:16px}
+.lib h3{margin:0 0 8px;font:600 15px var(--font-body)}
+.libitem{display:flex;gap:10px;align-items:center;flex-wrap:wrap;border:1px solid var(--line-2);border-radius:14px;padding:12px 14px;background:var(--surface);margin-bottom:8px}
+.libitem div{flex:1;min-width:200px;font-size:14px}.libitem small{display:block;color:var(--muted)}
+.savecard{margin-top:16px;padding:16px}
+.saverow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+.saveinfo{margin:10px 0 0;color:var(--muted);font-size:13px}
 tr.flash td{animation:rowfl 1.4s ease-out}
 @keyframes rowfl{0%{background:var(--surface-2)}100%{background:transparent}}
 .okmark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff}
@@ -379,6 +386,7 @@ td .t1{max-width:360px}
       <p>Every barcode you scan is added to the actual count. The page shows the ERP stock next to what you counted, and the difference for every item.</p>
       <p>Matching works on the barcode, the SKU or the item code. To count several units of one item at once, type <span class="mono">3*5700303037288</span> and press Enter.</p>
       <button class="btn" id="backBtn" type="button" hidden>Back to the current count</button>
+      <div class="lib" id="lib" hidden></div>
       <div class="resume" id="resume" hidden>
         <div><b id="resumeTitle"></b><small id="resumeSub"></small></div>
         <button class="btn primary" id="resumeBtn" type="button">Continue this count</button>
@@ -459,6 +467,11 @@ td .t1{max-width:360px}
       </div>
       <div class="tablewrap"><table id="tbl"></table></div>
       <button class="btn more" id="tmore" type="button" hidden></button>
+    </section>
+    <section class="panel savecard" id="savecard">
+      <header><h2>Save project</h2></header>
+      <div class="saverow"><input class="field grow" id="pname" type="text" maxlength="60" placeholder="Store · date" aria-label="Project name"><button class="btn primary" id="saveBtn" type="button">Save project</button></div>
+      <p class="saveinfo" id="saveInfo"></p>
     </section>
   </section>
 </div>
@@ -763,7 +776,7 @@ let raf=0;
 function scheduleRender(){if(raf)return;raf=requestAnimationFrame(()=>{raf=0;renderAll();});}
 function renderAll(){
   if(!S)return;
-  compute();renderSum();renderTable();renderHist();renderTools();setLive();
+  compute();renderSum();renderTable();renderHist();renderTools();setLive();scheduleAuto();
 }
 function signed(d){return (d>0?"+":d<0?"−":"")+fmt(Math.abs(d));}
 function renderSum(){
@@ -880,31 +893,93 @@ function setLive(){
     else{dot.className="dot";const n=ST?ST.team.length:1;tx.textContent=net.canWrite?"Live · "+n+(n===1?" person":" people"):"Live · view only";}
   }else{
     dot.className="dot"+(localFail?" off":"");
-    tx.textContent=localFail?"Not saved here. Export before closing.":"Saved on this device only";
+    tx.textContent=localFail?"Not saved here. Export before closing.":"Auto-saved on this device";
   }
 }
 
-/* ---------- local persistence (when there is no shared count) ---------- */
-function saveLocal(){
-  if(!S||net.mode!=="local")return;
+/* ---------- saved projects (library) ---------- */
+const LIBKEY="pandora-stock-index-v1",PROJ="pandora-stock-proj-";
+function libIndex(){try{const a=JSON.parse(localStorage.getItem(LIBKEY)||"[]");return Array.isArray(a)?a:[];}catch(e){return [];}}
+function today(){return new Date().toISOString().slice(0,10);}
+function defName(){return ((S&&S.wh)||"Store")+" · "+today();}
+function snapshot(name){
+  return {v:1,id:S.pid,name:name||S.pname||defName(),wh:S.wh||"",file:S.file,loadedAt:S.loadedAt,excl:S.excl||[],savedAt:Date.now(),
+    items:S.items.map(i=>[i.code,i.sku,i.name,i.barcode,i.group,i.cat,i.bal]),
+    scans:S.scans.map(x=>[x.t,x.raw,x.i,x.n,x.z||"",x.m||0,x.by||""])};
+}
+function writeProject(name){
+  if(!S)return false;
+  if(name)S.pname=name;
   try{
-    localStorage.setItem(KEY,JSON.stringify({v:2,file:S.file,wh:S.wh,loadedAt:S.loadedAt,excl:S.excl,
-      items:S.items.map(i=>[i.code,i.sku,i.name,i.barcode,i.group,i.cat,i.bal]),
-      blocks:[...blocks.values()].map(b=>({id:b.id,dev:b.dev,by:b.by,n:b.n,scans:b.scans}))}));
-    localFail=false;
-  }catch(e){localFail=true;}
+    const rec=snapshot(name);
+    localStorage.setItem(PROJ+rec.id,JSON.stringify(rec));
+    const idx=libIndex().filter(x=>x.id!==rec.id);
+    idx.unshift({id:rec.id,name:rec.name,wh:rec.wh,file:rec.file,savedAt:rec.savedAt,scans:rec.scans.length});
+    localStorage.setItem(LIBKEY,JSON.stringify(idx));
+    localFail=false;S.savedAt=rec.savedAt;
+    return true;
+  }catch(e){
+    localFail=true;
+    if(!writeProject.warned){writeProject.warned=true;toast("This browser is full, so the count could not be saved. Delete old saved projects or export to Excel.");}
+    return false;
+  }
+}
+let autoT=0;
+function scheduleAuto(){if(!S||!S.pid)return;clearTimeout(autoT);autoT=setTimeout(autoSave,1500);}
+function autoSave(){
+  clearTimeout(autoT);
+  if(!S||!S.pid)return;
+  if(writeProject())updateSaveInfo();
   setLive();
 }
-function readSaved(){
-  try{const raw=localStorage.getItem(KEY);if(!raw)return null;const d=JSON.parse(raw);return d&&d.v===2?d:null;}catch(e){return null;}
+function saveLocal(){scheduleAuto();}
+function updateSaveInfo(){
+  const el=$("#saveInfo");if(!el||!S)return;
+  el.textContent=S.savedAt?("Saved "+new Date(S.savedAt).toLocaleString("en-GB")+" · saved automatically as you scan"):"Saved automatically as you scan";
+}
+function readProject(id){try{const raw=localStorage.getItem(PROJ+id);return raw?JSON.parse(raw):null;}catch(e){return null;}}
+function deleteProject(id){
+  try{localStorage.removeItem(PROJ+id);localStorage.setItem(LIBKEY,JSON.stringify(libIndex().filter(x=>x.id!==id)));}catch(e){}
 }
 function checkResume(){
-  const r=$("#resume");const d=net.mode==="local"?readSaved():null;
-  if(!d){r.hidden=true;return;}
-  const n=d.blocks.reduce((a,b)=>a+b.scans.length,0);
-  r.hidden=false;
-  $("#resumeTitle").textContent="Saved count: "+d.file;
-  $("#resumeSub").textContent=fmt(n)+" scans · "+new Date(d.loadedAt).toLocaleString("en-GB");
+  $("#resume").hidden=true;
+  const box=$("#lib");const idx=libIndex();
+  if(!idx.length){box.hidden=true;box.innerHTML="";return;}
+  box.hidden=false;
+  box.innerHTML="<h3>Saved projects</h3>"+idx.map(x=>`<div class="libitem"><div><b>${esc(x.name)}</b><small>${esc(x.file||"")} · ${fmt(x.scans)} scans · saved ${new Date(x.savedAt).toLocaleString("en-GB")}</small></div><button class="btn primary" type="button" data-open="${esc(x.id)}">Open</button><button class="btn" type="button" data-del="${esc(x.id)}">Delete</button></div>`).join("");
+}
+async function openProject(id){
+  const p=readProject(id);
+  if(!p){toast("This saved project could not be read");return;}
+  if(net.mode==="shared"){
+    if(!net.canWrite){toast("View-only access cannot open a project");return;}
+    const ok=await askConfirm("Open this project?","It becomes the shared count and everyone connected switches to it.","Open project");
+    if(!ok)return;
+    try{
+      await publishCount({items:p.items,wh:p.wh},p.file);
+      S.pid=p.id;S.pname=p.name;
+      addScans(p.scans);
+      toast("Project opened");
+    }catch(e){showErr((e&&e.message)||"The project could not be opened.");}
+  }else{
+    enterCount({sid:null,meta:{file:p.file,wh:p.wh,loadedAt:p.loadedAt,excl:p.excl,by:""},rows:p.items,pid:p.id,pname:p.name});
+    addScans(p.scans);
+    toast("Project opened");
+  }
+}
+function addScans(list){
+  const groups=new Map();
+  for(const a of list){const by=a[6]||"";if(!groups.has(by))groups.set(by,[]);groups.get(by).push([a[0],a[1],a[2],a[3],a[4]||"",a[5]||0]);}
+  const tagBase="imp"+Math.random().toString(36).slice(2,6);let gi=0;
+  for(const [by,arr] of groups){
+    const mine=nkey(by)===nkey(myName);const d=mine?dev:tagBase+(gi++);
+    for(let k=0;k<arr.length;k+=30){
+      const id=d+"_r"+(k/30)+(mine?"":"");
+      const b={id,sid:net.sid,dev:d,by,n:blockNo++,scans:arr.slice(k,k+30),own:mine,dirty:false,busy:false,again:false,timer:0};
+      blocks.set(id,b);if(net.mode==="shared")markDirty(b);
+    }
+  }
+  mergeScans();rebuildCounts();renderAll();
 }
 
 /* ---------- shared count ---------- */
@@ -955,14 +1030,13 @@ function detachCountWatchers(){
   blocks.forEach(b=>{if(b.dirty&&net.db)flushBlock(b);});
   countUnsubs.splice(0).forEach(u=>{try{u();}catch(e){}});
 }
-function enterCount({sid,meta,rows,saved}){
+function enterCount({sid,meta,rows,saved,pid,pname}){
   detachCountWatchers();
   blocks.clear();people.clear();cuts.clear();cutSet=new Set();curBlock=null;blockNo=0;
   S={sid,file:meta.file,wh:meta.wh,loadedAt:meta.loadedAt,excl:(meta.excl||[]).slice(),by:meta.by||"",
-    items:rows.map((r,i)=>mkItem(r,i)),scans:[]};
+    items:rows.map((r,i)=>mkItem(r,i)),scans:[],pid:pid||sid||("p"+Date.now().toString(36)+Math.random().toString(36).slice(2,5)),pname:pname||"",savedAt:0};
   buildIndex();
   net.sid=sid;
-  if(saved){for(const b of saved.blocks)blocks.set(b.id,{id:b.id,sid:null,dev:b.dev,by:b.by,n:b.n,scans:b.scans,own:String(b.dev).indexOf("imp")!==0,dirty:false,busy:false,again:false,timer:0});mergeScans();rebuildCounts();}
   if(net.mode==="shared"&&sid)attach(sid);
   ui.creating=false;
   openApp();
@@ -1087,6 +1161,7 @@ function openApp(){
   $("#whName").textContent=S.wh||"Warehouse";$("#whChip").hidden=false;
   $("#fileName").textContent=S.file;$("#fileChip").hidden=false;
   ui.tab="all";ui.cat="";ui.q="";ui.limit=150;$("#tq").value="";
+  $("#pname").value=S.pname||defName();updateSaveInfo();
   idleResult();
   loadCatalog();
   renderAll();
@@ -1213,10 +1288,15 @@ const drop=$("#drop");
 ["dragenter","dragover"].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("over");}));
 ["dragleave","drop"].forEach(ev=>window.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("over");}));
 window.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[0];if(f&&!$("#landing").hidden)loadFile(f);});
-$("#resumeBtn").addEventListener("click",()=>{
-  const d=readSaved();if(!d)return;
-  enterCount({sid:null,meta:{file:d.file,wh:d.wh,loadedAt:d.loadedAt,excl:d.excl,by:""},rows:d.items,saved:d});
-  toast("Count restored");
+$("#lib").addEventListener("click",async e=>{
+  const o=e.target.closest("[data-open]"),d=e.target.closest("[data-del]");
+  if(o)openProject(o.dataset.open);
+  else if(d){const ok=await askConfirm("Delete this saved project?","It is removed from this browser. Export it to Excel first if you still need it.","Delete");if(ok){deleteProject(d.dataset.del);checkResume();}}
+});
+$("#saveBtn").addEventListener("click",()=>{
+  if(!S)return;
+  const n=($("#pname").value||"").trim()||defName();
+  if(writeProject(n)){updateSaveInfo();setLive();toast("Project saved: "+n);}
 });
 $("#backBtn").addEventListener("click",()=>{ui.creating=false;$("#landing").hidden=true;$("#app").hidden=false;setTimeout(()=>scanEl.focus(),30);});
 $("#meChip").addEventListener("click",async()=>{
@@ -1252,9 +1332,9 @@ $("#newBtn").addEventListener("click",async()=>{
     if(!ok)return;
     ui.creating=true;$("#app").hidden=true;showLanding();
   }else{
-    const ok=await askConfirm("Start a new count?",blocks.size?"The count on this device will be cleared. Export it first if you still need it.":"The loaded file will be cleared.","Start new count");
+    const ok=await askConfirm("Start a new count?","This count stays in Saved projects, so you can open it again later.","Start new count");
     if(!ok)return;
-    try{localStorage.removeItem(KEY);}catch(e){}
+    autoSave();
     blocks.clear();people.clear();S=null;ST=null;showLanding();
   }
 });
@@ -1290,7 +1370,7 @@ document.addEventListener("click",e=>{
   if(window.getSelection&&String(window.getSelection()))return;
   scanEl.focus();
 });
-document.addEventListener("visibilitychange",()=>{if(document.hidden)blocks.forEach(b=>{if(b.dirty)flushBlock(b);});});
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&S)autoSave();if(document.hidden)blocks.forEach(b=>{if(b.dirty)flushBlock(b);});});
 
 $("#hq").addEventListener("input",e=>{ui.hq=e.target.value;ui.hlim=100;renderHist();});
 $("#hzone").addEventListener("change",e=>{ui.hz=e.target.value;ui.hlim=100;renderHist();});
