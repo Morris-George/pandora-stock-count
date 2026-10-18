@@ -1410,6 +1410,7 @@ $("#tbl").addEventListener("change",e=>{
   const el=e.target;if(!el.classList.contains("rin"))return;
   if(el.value==="")return;
   const n=parseInt(el.value,10);if(isNaN(n)||n<0){toast("Type a number");return;}
+  el.defaultValue=el.value;ui.focusKey=el.dataset.k;
   processRecount(el.dataset.k,n);
 });
 $("#tbl").addEventListener("keydown",e=>{
