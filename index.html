@@ -775,12 +775,15 @@ function renderHist(){
   const sel=$("#hzone");
   if(document.activeElement!==sel)sel.innerHTML='<option value="">All zones</option>'+zs.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join("");
   sel.value=zs.includes(ui.hz)?ui.hz:"";if(sel.value!==ui.hz)ui.hz=sel.value;
-  const names=[...new Map(S.scans.map(x=>[nkey(x.by),x.by||"Unknown"])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const nm=new Map(S.scans.map(x=>[nkey(x.by),x.by||"Unknown"]));
+  if(myName)nm.set(nkey(myName),myName);
+  const names=[...nm.entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  if(!ui.hw)ui.hw=nkey(myName)||"*";
   const ws=$("#hwho");
-  if(document.activeElement!==ws)ws.innerHTML='<option value="">Everyone</option>'+names.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join("");
-  ws.value=names.some(n=>n[0]===ui.hw)?ui.hw:"";if(ws.value!==ui.hw)ui.hw=ws.value;
+  if(document.activeElement!==ws)ws.innerHTML=names.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}${k===nkey(myName)?" (you)":""}</option>`).join("")+'<option value="*">Everyone</option>';
+  ws.value=(ui.hw==="*"||names.some(n=>n[0]===ui.hw))?ui.hw:"*";if(ws.value!==ui.hw)ui.hw=ws.value;
   const q=norm(ui.hq);
-  const all=histGroups().filter(g=>(!ui.hw||nkey(g.by)===ui.hw)&&(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
+  const all=histGroups().filter(g=>(ui.hw==="*"||nkey(g.by)===ui.hw)&&(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
   all.sort((a,b)=>b.last-a.last);
   $("#hSub").textContent=fmt(all.length)+(all.length===1?" item":" items");
   const can=!locked();
@@ -1324,7 +1327,7 @@ function openGate(change){
   });
 }
 function rememberName(v){
-  myName=v;lsSet(NAMEKEY,v);
+  myName=v;ui.hw=nkey(v);lsSet(NAMEKEY,v);
   try{const r=JSON.parse(lsGet(RECENT)||"[]").filter(n=>n!==v);r.unshift(v);lsSet(RECENT,JSON.stringify(r.slice(0,8)));}catch(e){}
   $("#meName").textContent=v;$("#meChip").hidden=false;
 }
