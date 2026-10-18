@@ -455,6 +455,7 @@ td .t1{max-width:360px}
       <header><h2>Scan history <small id="hSub"></small></h2></header>
       <div class="filters">
         <input class="field grow" id="hq" type="search" placeholder="Search scans" aria-label="Search scan history">
+        <select class="field" id="hwho" aria-label="Person"></select>
         <select class="field" id="hzone" aria-label="Zone"></select>
       </div>
       <div class="tablewrap"><table id="htbl"></table></div>
@@ -501,7 +502,7 @@ const blocks=new Map(),people=new Map();
 const dev="d"+Math.random().toString(36).slice(2,9);
 let myName="",curBlock=null,blockNo=0,joining=null,localFail=false,watchdog=0;
 const net={db:null,mode:"boot",canWrite:true,sid:null,unsubs:[],failed:0};
-const ui={focusKey:"",open:new Set(),hq:"",hz:"",hlim:100,tab:"diff",cat:"",q:"",limit:150,muted:false,lastKey:-1,creating:false};
+const ui={hw:"",focusKey:"",open:new Set(),hq:"",hz:"",hlim:100,tab:"diff",cat:"",q:"",limit:150,muted:false,lastKey:-1,creating:false};
 const locked=()=>!S||(net.mode==="shared"&&!net.canWrite);
 
 /* ---------- helpers ---------- */
@@ -545,7 +546,7 @@ function rebuildCuts(){cutSet=new Set();cuts.forEach(l=>l.forEach(c=>cutSet.add(
 function mergeScans(){
   const out=[];
   for(const b of blocks.values()){
-    for(let k=0;k<b.scans.length;k++){const a=b.scans[k];if(cutSet.size&&cutSet.has(a[0]+"|"+a[1]+"|"+b.dev))continue;out.push({t:a[0],raw:a[1],i:a[2],n:a[3],z:a[4]||"",m:a[5]||0,by:b.by,dev:b.dev,k,c:0,bid:b.id});}
+    for(let k=0;k<b.scans.length;k++){const a=b.scans[k];if(cutSet.size&&cutSet.has(a[0]+"|"+a[1]+"|"+b.dev))continue;out.push({t:a[0],raw:a[1],i:a[2],n:a[3],z:a[4]||"",m:a[5]||0,by:a[6]||b.by,dev:b.dev,k,c:0,bid:b.id});}
   }
   out.sort((x,y)=>x.t-y.t||(x.dev<y.dev?-1:x.dev>y.dev?1:0)||x.k-y.k);
   S.scans=out;
@@ -761,7 +762,7 @@ function histGroups(){
   const m=new Map();
   for(const x of S.scans){
     const base=x.i>=0?"i"+x.i:"u"+x.raw;
-    const key=x.m===2?"R|"+base:"S|"+base+"|"+(x.z||"");
+    const who=nkey(x.by);const key=x.m===2?"R|"+base+"|"+who:"S|"+base+"|"+(x.z||"")+"|"+who;
     let g=m.get(key);
     if(!g){g={key,i:x.i,raw:x.raw,z:x.m===2?"":(x.z||""),units:0,last:0,by:x.by,rc:x.m===2};m.set(key,g);}
     if(x.m===2)g.units=Math.max(0,x.n);else g.units+=x.n;
@@ -774,8 +775,12 @@ function renderHist(){
   const sel=$("#hzone");
   if(document.activeElement!==sel)sel.innerHTML='<option value="">All zones</option>'+zs.map(z=>`<option value="${esc(z)}">${esc(z)}</option>`).join("");
   sel.value=zs.includes(ui.hz)?ui.hz:"";if(sel.value!==ui.hz)ui.hz=sel.value;
+  const names=[...new Map(S.scans.map(x=>[nkey(x.by),x.by||"Unknown"])).entries()].sort((a,b)=>a[1].localeCompare(b[1]));
+  const ws=$("#hwho");
+  if(document.activeElement!==ws)ws.innerHTML='<option value="">Everyone</option>'+names.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}</option>`).join("");
+  ws.value=names.some(n=>n[0]===ui.hw)?ui.hw:"";if(ws.value!==ui.hw)ui.hw=ws.value;
   const q=norm(ui.hq);
-  const all=histGroups().filter(g=>(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
+  const all=histGroups().filter(g=>(!ui.hw||nkey(g.by)===ui.hw)&&(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
   all.sort((a,b)=>b.last-a.last);
   $("#hSub").textContent=fmt(all.length)+(all.length===1?" item":" items");
   const can=!locked();
@@ -1427,6 +1432,7 @@ document.addEventListener("click",e=>{
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&S)autoSave();if(document.hidden)blocks.forEach(b=>{if(b.dirty)flushBlock(b);});});
 
 $("#hq").addEventListener("input",e=>{ui.hq=e.target.value;ui.hlim=100;renderHist();});
+$("#hwho").addEventListener("change",e=>{ui.hw=e.target.value;ui.hlim=100;renderHist();});
 $("#hzone").addEventListener("change",e=>{ui.hz=e.target.value;ui.hlim=100;renderHist();});
 $("#hmore").addEventListener("click",()=>{ui.hlim+=100;renderHist();});
 $("#zone").value=lsGet("pandora-stock-zone")||"";
@@ -1438,8 +1444,8 @@ $("#htbl").addEventListener("click",e=>{
   const d=+bt.dataset.act;
   if(d<0&&g.units<=0)return;
   const b=getBlock();
-  if(g.rc)b.scans.push([Date.now(),g.raw,g.i,Math.max(0,g.units+d),"",2]);
-  else b.scans.push([Date.now(),g.raw,g.i,d,g.z,0]);
+  if(g.rc)b.scans.push([Date.now(),g.raw,g.i,Math.max(0,g.units+d),"",2,g.by||""]);
+  else b.scans.push([Date.now(),g.raw,g.i,d,g.z,0,g.by||""]);
   markDirty(b);mergeScans();rebuildCounts();scheduleRender();
 });
 
