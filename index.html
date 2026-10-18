@@ -480,6 +480,7 @@ td .t1{max-width:360px}
 <canvas id="confetti"></canvas>
 <div id="toast" role="status" aria-live="polite"></div>
 <div class="modal" id="gate" hidden><form class="dialog" id="gateForm" aria-labelledby="gTitle"><h3 id="gTitle">Who is scanning?</h3><p>Your name is saved with every scan you make, so the team can see who counted what.</p><input type="text" id="nameIn" maxlength="30" autocomplete="name" placeholder="Your name" aria-label="Your name"><div class="who" id="who"></div><div class="acts"><button class="btn" id="gNo" type="button" hidden>Cancel</button><button class="btn primary" id="gYes" type="submit">Start</button></div></form></div>
+<div class="modal" id="pwModal" hidden><form class="dialog" id="pwForm"><h3>Password needed</h3><p>Enter the password to delete this saved project.</p><input type="password" id="pwIn" autocomplete="off" placeholder="Password" aria-label="Password"><p id="pwErr" hidden style="color:var(--bad);margin:8px 0 0">Wrong password.</p><div class="acts"><button class="btn" id="pwNo" type="button">Cancel</button><button class="btn primary" type="submit">Delete</button></div></form></div>
 <div class="modal" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mTitle"><h3 id="mTitle"></h3><p id="mBody"></p><div class="acts"><button class="btn" id="mNo" type="button">Cancel</button><button class="btn primary" id="mYes" type="button"></button></div></div></div>
 
 <script>
@@ -938,6 +939,41 @@ function updateSaveInfo(){
   el.textContent=S.savedAt?("Saved "+new Date(S.savedAt).toLocaleString("en-GB")+" · saved automatically as you scan"):"Saved automatically as you scan";
 }
 function readProject(id){try{const raw=localStorage.getItem(PROJ+id);return raw?JSON.parse(raw):null;}catch(e){return null;}}
+function sha256(str){
+  const r=(n,x)=>(x>>>n)|(x<<(32-n));
+  const K=[],H=[];const isP=n=>{for(let i=2;i*i<=n;i++)if(n%i===0)return false;return true;};
+  for(let n=2;K.length<64;n++)if(isP(n)){K.push(Math.floor((Math.cbrt(n)%1)*4294967296)>>>0);if(H.length<8)H.push(Math.floor((Math.sqrt(n)%1)*4294967296)>>>0);}
+  const b=new TextEncoder().encode(str);const l=b.length;
+  const m=new Uint8Array(((l+9+63)>>6)<<6);m.set(b);m[l]=0x80;
+  const dv=new DataView(m.buffer);dv.setUint32(m.length-4,(l*8)>>>0);dv.setUint32(m.length-8,Math.floor(l*8/4294967296));
+  const w=new Array(64);let hs=H.slice();
+  for(let o=0;o<m.length;o+=64){
+    for(let i=0;i<16;i++)w[i]=dv.getUint32(o+i*4);
+    for(let i=16;i<64;i++){const s0=r(7,w[i-15])^r(18,w[i-15])^(w[i-15]>>>3),s1=r(17,w[i-2])^r(19,w[i-2])^(w[i-2]>>>10);w[i]=(w[i-16]+s0+w[i-7]+s1)>>>0;}
+    let [a,b2,c,d,e,f,g,hh]=hs;
+    for(let i=0;i<64;i++){
+      const S1=r(6,e)^r(11,e)^r(25,e),ch=(e&f)^(~e&g),t1=(hh+S1+ch+K[i]+w[i])>>>0;
+      const S0=r(2,a)^r(13,a)^r(22,a),mj=(a&b2)^(a&c)^(b2&c),t2=(S0+mj)>>>0;
+      hh=g;g=f;f=e;e=(d+t1)>>>0;d=c;c=b2;b2=a;a=(t1+t2)>>>0;
+    }
+    hs=[a,b2,c,d,e,f,g,hh].map((v,i)=>(hs[i]+v)>>>0);
+  }
+  return hs.map(v=>v.toString(16).padStart(8,"0")).join("");
+}
+const DELHASH="e0adb084240a0b451152a05754a68ec74ea47a75c4767fcaec3ddac4481d932c";
+function askPassword(){
+  return new Promise(res=>{
+    const m=$("#pwModal"),inp=$("#pwIn"),err=$("#pwErr");
+    inp.value="";err.hidden=true;m.hidden=false;inp.focus();
+    const done=v=>{m.hidden=true;$("#pwForm").onsubmit=null;$("#pwNo").onclick=null;res(v);};
+    $("#pwForm").onsubmit=e=>{
+      e.preventDefault();
+      if(sha256("pandora-stock:"+inp.value)===DELHASH)done(true);
+      else{err.hidden=false;inp.value="";inp.focus();}
+    };
+    $("#pwNo").onclick=()=>done(false);
+  });
+}
 function deleteProject(id){
   try{localStorage.removeItem(PROJ+id);localStorage.setItem(LIBKEY,JSON.stringify(libIndex().filter(x=>x.id!==id)));}catch(e){}
 }
@@ -1291,7 +1327,7 @@ window.addEventListener("drop",e=>{const f=e.dataTransfer&&e.dataTransfer.files[
 $("#lib").addEventListener("click",async e=>{
   const o=e.target.closest("[data-open]"),d=e.target.closest("[data-del]");
   if(o)openProject(o.dataset.open);
-  else if(d){const ok=await askConfirm("Delete this saved project?","It is removed from this browser. Export it to Excel first if you still need it.","Delete");if(ok){deleteProject(d.dataset.del);checkResume();}}
+  else if(d){const ok=await askPassword();if(ok){deleteProject(d.dataset.del);checkResume();toast("Project deleted");}}
 });
 $("#saveBtn").addEventListener("click",()=>{
   if(!S)return;
