@@ -1065,11 +1065,111 @@ function addScans(list){
 
 /* ---------- shared count ---------- */
 function netErr(e){console.warn("shared count",e);net.failed++;setLive();}
+/* ---------- shared database on this website (when not running inside Claude) ---------- */
+const CODEKEY="pandora-stock-access";
+async function rawCall(body,code){
+  let r;
+  try{r=await fetch("/api/db",{method:"POST",headers:{"content-type":"application/json","x-access":code||""},body:JSON.stringify(body)});}
+  catch(e){const er=new Error("offline");er.code="unavailable";throw er;}
+  let j=null;try{j=await r.json();}catch(e){}
+  if(!r.ok){
+    const er=new Error((j&&j.error)||("http "+r.status));
+    er.status=r.status;er.code=r.status===401?"unauthorized":r.status===413?"quota_exceeded":"unavailable";
+    throw er;
+  }
+  return j;
+}
+function askAccessCode(wrong){
+  return new Promise(res=>{
+    const m=$("#pwModal"),inp=$("#pwIn"),err=$("#pwErr");
+    const t=m.querySelector("h3"),p=m.querySelector("p"),y=m.querySelector("button[type=submit]");
+    const keep=[t.textContent,p.textContent,y.textContent,err.textContent];
+    t.textContent="Access code";p.textContent="Enter the team access code to open the shared count.";y.textContent="Continue";err.textContent="That code is not right.";
+    inp.value="";err.hidden=!wrong;m.hidden=false;inp.focus();
+    const done=v=>{m.hidden=true;[t.textContent,p.textContent,y.textContent,err.textContent]=keep;$("#pwForm").onsubmit=null;$("#pwNo").onclick=null;res(v);};
+    $("#pwForm").onsubmit=e=>{e.preventDefault();done(inp.value);};
+    $("#pwNo").onclick=()=>done(null);
+  });
+}
+function makeServerDb(code){
+  const subs=new Set();let ver=-1,timer=0,busy=false,bad=false;const db={onRecover:null};
+  const call=b=>rawCall(b,code);
+  const mkDoc=(id,x)=>({id,exists:true,data:()=>x});
+  function applyTo(s,r){
+    if(s.k==="d"){
+      const o=r&&r.doc;
+      if(o){if(!s.sent||s.t!==o.t){s.t=o.t;s.sent=true;s.cb({exists:true,id:s.id,data:()=>o.d});}}
+      else if(!s.sent){s.sent=true;s.cb({exists:false,id:s.id,data:()=>undefined});}
+    }else{
+      const docs=(r&&r.docs)||[];const ch=[];
+      for(const o of docs){
+        if(s.seen.get(o.id)===o.t)continue;
+        const had=s.seen.has(o.id);s.seen.set(o.id,o.t);
+        const d=mkDoc(o.id,o.d);s.all.set(o.id,d);
+        ch.push({type:had?"modified":"added",doc:d});
+        if(o.t>s.since)s.since=o.t;
+      }
+      if(ch.length||!s.sent){s.sent=true;s.cb({docs:[...s.all.values()],docChanges:()=>ch});}
+    }
+  }
+  async function first(s){
+    try{const r=await call({op:"sync",ver:-1,subs:[{k:s.k,path:s.path,since:0}]});if(subs.has(s))applyTo(s,r.res[0]);}
+    catch(e){if(s.err)s.err(e);}
+  }
+  async function poll(){
+    if(busy||document.hidden||!subs.size)return;
+    busy=true;
+    const list=[...subs];
+    try{
+      const r=await call({op:"sync",ver,subs:list.map(s=>({k:s.k,path:s.path,since:s.since}))});
+      if(!r.same){ver=r.ver;list.forEach((s,i)=>{if(subs.has(s))applyTo(s,r.res[i]);});}
+      if(bad){bad=false;if(db.onRecover)db.onRecover();}
+    }catch(e){bad=true;list.forEach(s=>s.err&&s.err(e));}
+    busy=false;
+  }
+  function start(){if(!timer){timer=setInterval(poll,4000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)poll();});}}
+  function sub(k,path,cb,err){
+    const s={k,path,cb,err,sent:false,t:-1,since:0,seen:new Map(),all:new Map(),id:path.slice(path.lastIndexOf("/")+1)};
+    subs.add(s);start();first(s);
+    return ()=>{subs.delete(s);};
+  }
+  db.doc=path=>({
+    async get(){const r=await call({op:"get",path});return {exists:!!r.exists,id:path.slice(path.lastIndexOf("/")+1),data:()=>r.d};},
+    async set(data){await call({op:"set",path,data});},
+    async update(data){await call({op:"update",path,data});},
+    onSnapshot(cb,err){return sub("d",path,cb,err);}
+  });
+  db.collection=path=>({
+    async get(){const r=await call({op:"list",path});return {docs:r.docs.map(o=>mkDoc(o.id,o.d))};},
+    onSnapshot(cb,err){return sub("c",path,cb,err);}
+  });
+  return db;
+}
+async function connectServer(){
+  let code=lsGet(CODEKEY)||"";
+  for(let i=0;i<5;i++){
+    try{
+      await rawCall({op:"ping"},code);
+      lsSet(CODEKEY,code);
+      const db=makeServerDb(code);
+      db.onRecover=()=>{net.failed=0;setLive();};
+      return db;
+    }catch(e){
+      if(e.status===401){code=await askAccessCode(i>0);if(code===null)return null;continue;}
+      return null;
+    }
+  }
+  return null;
+}
 async function connect(){
   let db=null,user=null;
   try{
     if(window.claude&&window.claude.use){db=await window.claude.use("db");user=await window.claude.use("user");}
   }catch(e){db=null;}
+  if(!db&&!(window.claude&&window.claude.use)&&/^https?:$/.test(location.protocol)){
+    db=await connectServer();
+    if(db){net.db=db;net.canWrite=true;net.mode="shared";net.server=true;return;}
+  }
   net.db=db;
   if(!db){net.mode="local";return;}
   let cw=null;
