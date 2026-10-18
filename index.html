@@ -215,6 +215,7 @@ tfoot tr:not(.trow) td{position:static;border-top:0;padding-top:4px}
 .savecard{margin-top:16px;padding:16px}
 .saverow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .saveinfo{margin:10px 0 0;color:var(--muted);font-size:13px}
+.topbar{padding:10px 0 0}
 tr.flash td{animation:rowfl 1.4s ease-out}
 @keyframes rowfl{0%{background:var(--surface-2)}100%{background:transparent}}
 .okmark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff}
@@ -410,6 +411,7 @@ td .t1{max-width:360px}
 
   <!-- app -->
   <section id="app" hidden>
+    <div class="topbar"><button class="btn" id="homeBtn" type="button">← Back to home</button></div>
     <div class="banner" id="banner" hidden></div>
     <div class="scanbar">
       <div class="scanrow">
@@ -1359,6 +1361,11 @@ $("#saveBtn").addEventListener("click",()=>{
   if(!S)return;
   const n=($("#pname").value||"").trim()||defName();
   if(writeProject(n)){updateSaveInfo();setLive();toast("Project saved: "+n);}
+});
+$("#homeBtn").addEventListener("click",()=>{
+  if(!S)return;
+  autoSave();
+  ui.creating=true;$("#app").hidden=true;showLanding();window.scrollTo(0,0);
 });
 $("#backBtn").addEventListener("click",()=>{ui.creating=false;$("#landing").hidden=true;$("#app").hidden=false;setTimeout(()=>scanEl.focus(),30);});
 $("#meChip").addEventListener("click",async()=>{
