@@ -345,7 +345,12 @@ tr.flash td{animation:rowfl 1.4s ease-out}
 .cres.k-found{background:#12301F;border-color:#4CD08F}
 .cres.k-part{background:#3A2A0E;border-color:#F0B24A}
 .cres.k-over,.cres.k-bad{background:#40201C;border-color:#FF7A66}
-.cnums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.cnums{display:grid;grid-template-columns:2.1fr 1fr 1.1fr;gap:8px}
+.cA{display:flex;align-items:center;justify-content:space-between;gap:6px}
+.cA>div{text-align:center;flex:1}
+.pm{flex:none;width:52px;height:52px;border-radius:14px;border:0;background:var(--accent);color:#2A1519;font-size:34px;line-height:1;font-weight:700}
+.pm:active{filter:brightness(.9)}
+#camMinus{background:#ffffff26;color:#fff}
 .cnums>div{background:#2a2024;border-radius:14px;padding:8px 10px;text-align:center}
 .cnums small{display:block;font-size:14px;color:#ffffffb0}
 .cnums b{font-size:34px;line-height:1.1;font-variant-numeric:tabular-nums}
@@ -560,19 +565,19 @@ td .t1{max-width:360px}
     <video id="camVideo" playsinline muted autoplay></video>
     <div class="camreticle"><i></i></div>
     <div class="camtop">
-      <button class="cbtn" id="camClose" type="button">✕ Close</button>
+      <button class="cbtn" id="camClose" type="button">&#10005; Close</button>
       <input id="camZone" type="text" maxlength="24" autocomplete="off" placeholder="Zone" aria-label="Zone being scanned">
       <button class="cbtn" id="camTorch" type="button" hidden>Light</button>
     </div>
     <div class="camhint" id="camMsg"></div>
-    <div class="cact camact"><span id="camCount">0 scanned</span><button class="cbtn" id="camUndo" type="button">Undo</button><button class="cbtn hot" id="camAgain" type="button" hidden>+1 again</button></div>
+    <div class="cact camact"><span id="camCount">0 scanned</span><button class="cbtn" id="camUndo" type="button">Undo</button></div>
   </div>
   <div class="campanel">
     <div class="cpic" id="camPic"><span>Scan an item and its picture shows here</span></div>
     <div class="ctext">
     <div class="cres" id="camRes"><b>Ready</b><span>Point the camera at a barcode</span></div>
     <div class="cnums" id="camNums" hidden>
-      <div><small>Actual</small><b id="cnA">0</b></div>
+      <div class="cA"><button class="pm" id="camMinus" type="button" aria-label="Remove one">&minus;</button><div><small>Actual</small><b id="cnA">0</b></div><button class="pm" id="camPlus" type="button" aria-label="Add one">+</button></div>
       <div><small>ERP</small><b id="cnE">0</b></div>
       <div id="cnDbox"><small>Difference</small><b id="cnD">0</b></div>
     </div>
@@ -1792,11 +1797,7 @@ function camHit(raw){
   cam.last=raw;cam.lastAt=t;
   camScan(raw);
 }
-function camScan(raw){
-  const z=$("#camZone").value;if($("#zone").value!==z){$("#zone").value=z;lsSet("pandora-stock-zone",z);}
-  processScan(raw);
-  cam.lastRaw=raw;cam.count++;
-  try{if(navigator.vibrate)navigator.vibrate(40);}catch(e){}
+function camShow(raw){
   const i=lookup(raw),it=i>=0?S.items[i]:null;
   const r=$("#camRes"),pic=$("#camPic"),nums=$("#camNums");
   if(it){
@@ -1815,8 +1816,14 @@ function camScan(raw){
     r.innerHTML=`<b>Not in the ERP</b><span>${esc(raw)}</span>`;
     nums.hidden=true;pic.dataset.t="";pic.innerHTML="<span>No item matches this barcode</span>";
   }
+}
+function camScan(raw){
+  const z=$("#camZone").value;if($("#zone").value!==z){$("#zone").value=z;lsSet("pandora-stock-zone",z);}
+  processScan(raw);
+  cam.lastRaw=raw;cam.count++;
+  try{if(navigator.vibrate)navigator.vibrate(40);}catch(e){}
+  camShow(raw);
   $("#camCount").textContent=fmt(cam.count)+" scanned";
-  $("#camAgain").hidden=false;
 }
 async function openPhoneModal(){
   const link=location.origin+location.pathname+"#phone="+encodeURIComponent(myName||"");
@@ -1832,7 +1839,23 @@ async function openPhoneModal(){
 $("#camBtn").addEventListener("click",openCam);
 $("#camClose").addEventListener("click",closeCam);
 $("#camUndo").addEventListener("click",()=>{$("#undoBtn").click();cam.count=Math.max(0,cam.count-1);$("#camCount").textContent=fmt(cam.count)+" scanned";cam.last="";});
-$("#camAgain").addEventListener("click",()=>{if(cam.lastRaw)camScan(cam.lastRaw);});
+function camAdjust(d){
+  if(!S||locked()||!cam.lastRaw)return;
+  const raw=cam.lastRaw,i=lookup(raw);
+  if(d<0){
+    compute();
+    const have=i>=0?S.items[i].cnt1:((ST&&ST.unknown.get(raw))||{units1:0}).units1;
+    if(have<=0){toast("Nothing to remove for this item");return;}
+  }
+  const b=getBlock();
+  b.scans.push([Date.now(),raw,i,d,($("#camZone").value||"").trim(),0]);
+  markDirty(b);mergeScans();rebuildCounts();scheduleRender();
+  try{if(navigator.vibrate)navigator.vibrate(30);}catch(e){}
+  cam.count=Math.max(0,cam.count+d);$("#camCount").textContent=fmt(cam.count)+" scanned";
+  camShow(raw);
+}
+$("#camPlus").addEventListener("click",()=>camAdjust(1));
+$("#camMinus").addEventListener("click",()=>camAdjust(-1));
 $("#camTorch").addEventListener("click",async()=>{try{cam.torch=!cam.torch;await cam.track.applyConstraints({advanced:[{torch:cam.torch}]});}catch(e){}});
 $("#camZone").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();e.target.blur();}});
 $("#cam").addEventListener("touchstart",()=>{try{if(actx&&actx.state==="suspended")actx.resume();}catch(e){}},{passive:true});
