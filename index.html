@@ -322,9 +322,9 @@ tr.flash td{animation:rowfl 1.4s ease-out}
 .fine{font-size:12.5px;color:var(--muted);margin:8px 0 0}
 #cam{position:fixed;inset:0;z-index:120;background:#120c0e;color:#fff;font-family:var(--font-body);display:flex;flex-direction:column}
 #cam[hidden]{display:none}
-.camview{position:relative;flex:none;height:27vh;min-height:150px;max-height:250px;background:#000;overflow:hidden}
+.camview{position:relative;flex:2 1 0;min-height:0;background:#000;overflow:hidden}
 #camVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
-.camreticle{position:absolute;left:50%;top:58%;width:86%;height:44%;transform:translate(-50%,-50%);border-radius:14px;border:2px solid #ffffffd9;box-shadow:0 0 0 9999px #0000003d}
+.camreticle{position:absolute;left:50%;top:48%;width:86%;height:34%;transform:translate(-50%,-50%);border-radius:14px;border:2px solid #ffffffd9;box-shadow:0 0 0 9999px #0000003d}
 .camreticle i{position:absolute;left:8%;right:8%;top:50%;height:2px;background:#FF93A0;box-shadow:0 0 10px #FF93A0;animation:cscan 1.8s ease-in-out infinite alternate}
 @keyframes cscan{from{top:16%}to{top:84%}}
 @media (prefers-reduced-motion:reduce){.camreticle i{animation:none}}
@@ -334,23 +334,26 @@ tr.flash td{animation:rowfl 1.4s ease-out}
 .cbtn{border:1px solid #ffffff55;background:#0009;color:#fff;border-radius:12px;padding:12px 16px;font:inherit;font-size:17px;font-weight:600;white-space:nowrap}
 .camtop .cbtn{padding:10px 13px;font-size:16px}
 .cbtn.hot{background:var(--accent);border-color:var(--accent);color:#2A1519}
-.camhint{position:absolute;left:10px;right:10px;bottom:6px;text-align:center;font-size:13px;color:#ffffffe6;text-shadow:0 1px 4px #000}
-.campanel{flex:1;min-height:0;overflow:auto;padding:12px 14px calc(env(safe-area-inset-bottom,0px) + 14px);display:flex;flex-direction:column;gap:12px}
-.cpic{flex:1 1 auto;min-height:130px;border-radius:16px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#6b5a5f;font-size:16px;text-align:center;padding:8px}
-.cpic img{width:100%;height:100%;object-fit:contain;max-height:100%}
+.camhint{position:absolute;left:10px;right:10px;bottom:74px;text-align:center;font-size:13px;color:#ffffffe6;text-shadow:0 1px 4px #000}
+.campanel{flex:2 1 0;min-height:0;padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 10px);display:grid;grid-template-rows:1fr 1fr;gap:10px}
+.ctext{min-height:0;display:flex;flex-direction:column;gap:8px;overflow:auto}
+.cpic{min-height:0;border-radius:16px;background:#fff;display:grid;place-items:center;overflow:hidden;color:#6b5a5f;font-size:16px;text-align:center;padding:8px}
+.cpic{position:relative}
+.cpic img{position:absolute;inset:6px;width:calc(100% - 12px);height:calc(100% - 12px);object-fit:contain}
 .cres{border-radius:16px;padding:12px 16px;background:#2a2024;border:2px solid #ffffff30;display:grid;gap:4px}
-.cres b{font-size:26px;line-height:1.15;overflow-wrap:anywhere}.cres span{font-size:19px;color:#ffffffe0}
+.cres{padding:8px 14px}.cres b{font-size:26px;line-height:1.15;overflow-wrap:anywhere}.cres span{font-size:19px;color:#ffffffe0}
 .cres.k-found{background:#12301F;border-color:#4CD08F}
 .cres.k-part{background:#3A2A0E;border-color:#F0B24A}
 .cres.k-over,.cres.k-bad{background:#40201C;border-color:#FF7A66}
 .cnums{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 .cnums>div{background:#2a2024;border-radius:14px;padding:8px 10px;text-align:center}
 .cnums small{display:block;font-size:14px;color:#ffffffb0}
-.cnums b{font-size:38px;line-height:1.1;font-variant-numeric:tabular-nums}
+.cnums b{font-size:34px;line-height:1.1;font-variant-numeric:tabular-nums}
 .cnums .k-found b{color:#4CD08F}.cnums .k-part b,.cnums .k-over b{color:#F0B24A}
 .cact{display:flex;align-items:center;gap:10px}
 .cact span{flex:1;font-size:17px;color:#ffffffd0}
 .cact .cbtn{padding:14px 18px}
+.camact{position:absolute;left:0;right:0;bottom:0;padding:10px 12px;background:linear-gradient(transparent,#000a)}
 .chip.act{cursor:pointer;font:inherit}
 .chip.act:hover{background:var(--surface-2)}
 .member{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--line)}
@@ -562,16 +565,18 @@ td .t1{max-width:360px}
       <button class="cbtn" id="camTorch" type="button" hidden>Light</button>
     </div>
     <div class="camhint" id="camMsg"></div>
+    <div class="cact camact"><span id="camCount">0 scanned</span><button class="cbtn" id="camUndo" type="button">Undo</button><button class="cbtn hot" id="camAgain" type="button" hidden>+1 again</button></div>
   </div>
   <div class="campanel">
     <div class="cpic" id="camPic"><span>Scan an item and its picture shows here</span></div>
+    <div class="ctext">
     <div class="cres" id="camRes"><b>Ready</b><span>Point the camera at a barcode</span></div>
     <div class="cnums" id="camNums" hidden>
       <div><small>Actual</small><b id="cnA">0</b></div>
       <div><small>ERP</small><b id="cnE">0</b></div>
       <div id="cnDbox"><small>Difference</small><b id="cnD">0</b></div>
     </div>
-    <div class="cact"><span id="camCount">0 scanned</span><button class="cbtn" id="camUndo" type="button">Undo</button><button class="cbtn hot" id="camAgain" type="button" hidden>+1 again</button></div>
+    </div>
   </div>
 </div>
 <div class="modal" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mTitle"><h3 id="mTitle"></h3><p id="mBody"></p><div class="acts"><button class="btn" id="mNo" type="button">Cancel</button><button class="btn primary" id="mYes" type="button"></button></div></div></div>
