@@ -221,6 +221,12 @@ tfoot tr:not(.trow) td{position:static;border-top:0;padding-top:4px}
 .chips button b{font:500 12px var(--font-mono);color:var(--muted)}
 .chips button.on{background:var(--accent);border-color:var(--accent);color:#2a1014}
 .chips button.on b{color:inherit}
+.inclhead{font-size:13px;color:var(--muted);margin:2px 0 6px}
+.inclbox{display:flex;flex-wrap:wrap;gap:8px}
+.incl{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line-2);background:var(--surface);border-radius:999px;padding:6px 12px;font:600 13px var(--font-body);cursor:pointer;opacity:.6}
+.incl.on{opacity:1;border-color:var(--ok);background:var(--ok-bg)}
+.incl input{width:16px;height:16px;accent-color:var(--ok);margin:0}
+.incl b{font:500 12px var(--font-mono);color:var(--muted)}
 tr.flash td{animation:rowfl 1.4s ease-out}
 @keyframes rowfl{0%{background:var(--surface-2)}100%{background:transparent}}
 .okmark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff}
@@ -572,7 +578,7 @@ function compute(){
   const st={erp:0,actual:0,unknownUnits:0,unknown:new Map(),rows:[],match:0,differ:0,team:[],skipCats:[]};
   st.skipCats=[...new Set(S.items.map(i=>i.cat))].filter(c=>/maintenance|service/i.test(c));
   for(const it of S.items){
-    it.ex=exSet.has(it.cat);it.inc=!it.ex||it.cnt>0;it.d=it.cnt-it.bal;it.d1=it.cnt1-it.bal;
+    it.ex=exSet.has(it.cat);it.inc=!it.ex;it.d=it.cnt-it.bal;it.d1=it.cnt1-it.bal;
     if(!it.inc)continue;
     st.erp+=it.bal;st.actual+=it.cnt;
     if(it.bal===0&&it.cnt===0&&it.cnt1===0)continue;
@@ -754,7 +760,7 @@ function showResult(kind,scan){
   r.className="result "+cls;r.dataset.t=scan.t;
   if(it){
     r.classList.add("hasimg");
-    r.innerHTML=`<div class="rpic">…</div><span class="ricon">${icon}</span><div class="rmain"><b>${esc(word)}</b><span class="rname">${esc(it.title)}</span><span class="rsub">Actual ${fmt(it.cnt)} · ERP ${fmt(it.bal)}</span></div><span class="rtime">${clock(scan.t)}</span>`;
+    r.innerHTML=`<div class="rpic">…</div><span class="ricon">${icon}</span><div class="rmain"><b>${esc(word)}</b><span class="rname">${esc(it.title)}</span><span class="rsub">Actual ${fmt(it.cnt)} · ERP ${fmt(it.bal)}${it.ex?" · category not counted":""}</span></div><span class="rtime">${clock(scan.t)}</span>`;
     fillPic(it,scan.t);
   }else{
     r.innerHTML=`<span class="ricon">${icon}</span><div class="rmain"><b>${esc(word)}</b><span class="rname mono">${esc(scan.raw)}</span><span class="rsub">No item with this barcode, SKU or item code</span></div><span class="rtime">${clock(scan.t)}</span>`;
@@ -823,11 +829,10 @@ function renderSum(){
   const miss=s.rows.filter(it=>it.d<0).reduce((a,it)=>a-it.d,0),over=s.rows.filter(it=>it.d>0).reduce((a,it)=>a+it.d,0);
   $("#sumLine").innerHTML=`<b>${fmt(s.match)}</b> items match · <b>${fmt(s.differ)}</b> differ (<b>${fmt(miss)}</b> units short, <b>${fmt(over)}</b> units over)`+(s.unknownUnits?` · <b>${fmt(s.unknownUnits)}</b> scanned not in the ERP`:"");
   const el=$("#exclLine");
-  if(s.skipCats.length){
-    const on=(S.excl||[]).length>0;
-    el.innerHTML=on?`Not counted: ${esc(s.skipCats.join(", "))} (services, no physical stock). <button type="button" id="exclBtn">Count them too</button>`
-                   :`Counting everything, including ${esc(s.skipCats.join(", "))}. <button type="button" id="exclBtn">Leave those out</button>`;
-  }else el.textContent="";
+  const exs=new Set(S.excl||[]);
+  const cats=new Map();S.items.forEach(it=>{const c=cats.get(it.cat)||{n:0,bal:0};c.n++;c.bal+=it.bal;cats.set(it.cat,c);});
+  const html='<div class="inclhead">Tick what to include in the count:</div><div class="inclbox">'+[...cats.entries()].sort((a,b)=>b[1].bal-a[1].bal).map(([c,v])=>`<label class="incl${exs.has(c)?"":" on"}"><input type="checkbox" data-cat="${esc(c)}"${exs.has(c)?"":" checked"}${locked()?" disabled":""}><span>${esc(c)}</span><b class="num">${fmt(v.bal)}</b></label>`).join("")+"</div>";
+  if(el.dataset.h!==html){el.dataset.h=html;el.innerHTML=html;}
   const real=s.team.filter(p=>p.units>0);
   $("#teamLine").innerHTML=real.length>1?"Counted by "+real.map(p=>`<b>${esc(p.name)}</b> ${fmt(p.units)}`).join(" · "):"";
 }
@@ -1442,9 +1447,10 @@ $("#tbl").addEventListener("keydown",e=>{
 $("#tq").addEventListener("input",e=>{ui.q=e.target.value;ui.limit=150;renderTable();});
 $("#tchips").addEventListener("click",e=>{const b=e.target.closest("button[data-c]");if(!b)return;ui.cat=b.dataset.c;ui.limit=150;renderTable();});
 $("#tmore").addEventListener("click",()=>{ui.limit+=150;renderTable();});
-$("#sum").addEventListener("click",e=>{
-  if(!e.target.closest("#exclBtn")||!S||locked())return;
-  setExcl((S.excl||[]).length?[]:ST.skipCats.slice());
+$("#exclLine").addEventListener("change",e=>{
+  const cb=e.target.closest("input[data-cat]");if(!cb||!S||locked())return;
+  const off=[...document.querySelectorAll("#exclLine input[data-cat]")].filter(x=>!x.checked).map(x=>x.dataset.cat);
+  setExcl(off);
 });
 document.addEventListener("click",e=>{
   if(!S||locked()||!$("#modal").hidden||!$("#gate").hidden)return;
