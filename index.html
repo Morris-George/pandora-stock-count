@@ -309,6 +309,13 @@ tr.flash td{animation:rowfl 1.4s ease-out}
 .banner{margin-top:12px;border-radius:12px;padding:10px 14px;background:var(--warn-bg);color:var(--warn);font-size:13.5px}
 #boot{padding:90px 0;text-align:center;color:var(--muted)}
 #boot b{display:block;font:700 22px var(--font-display);color:var(--ink);margin-bottom:6px}
+.whowrap{position:relative;display:inline-flex}
+.whopanel{position:absolute;right:0;top:calc(100% + 6px);z-index:60;min-width:210px;max-width:80vw;background:var(--surface);border:1px solid var(--line-2);border-radius:12px;padding:8px 6px;box-shadow:0 8px 28px rgba(0,0,0,.14);font-size:13.5px}
+.whopanel h4{margin:2px 10px 6px;font-size:11.5px;font-weight:500;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.whopanel .wr{display:flex;align-items:center;gap:8px;padding:5px 10px;color:var(--ink)}
+.whopanel .wr small{margin-left:auto;color:var(--muted)}
+.whopanel .wr.off{color:var(--muted)}
+.whopanel .dot.gray{background:var(--line-2)}
 .chip.act{cursor:pointer;font:inherit}
 .chip.act:hover{background:var(--surface-2)}
 .member{display:grid;grid-template-columns:30px minmax(0,1fr) auto;gap:12px;align-items:center;padding:9px 18px;border-bottom:1px solid var(--line)}
@@ -389,6 +396,7 @@ td .t1{max-width:360px}
     <span class="chip" id="whChip" hidden><b id="whName"></b></span>
     <span class="chip" id="fileChip" hidden><b id="fileName"></b></span>
     <button type="button" class="chip act" id="meChip" hidden title="Change the name used for your scans">Scanning as <b id="meName"></b></button>
+    <span class="whowrap" id="whoWrap" hidden><button type="button" class="chip act" id="whoChip" title="See who is online now"><span class="dot"></span><b id="whoTxt">1 online</b></button><div class="whopanel" id="whoPanel" hidden></div></span>
     <span class="chip" id="saveChip" hidden><span class="dot" id="saveDot"></span><b id="saveTxt"></b></span>
   </div>
 
@@ -932,7 +940,46 @@ function renderTools(){
   else if(net.mode==="shared"&&!net.canWrite){bn.hidden=false;bn.textContent="Your access to this page is view-only. You can watch the count live but not scan. Ask the owner for editor access.";}
   else bn.hidden=true;
 }
+const ONLINE_MS=70000;
+function onlineList(){
+  const now=Date.now(),out=[];
+  for(const [id,p] of people.entries()){
+    const nm=String((p&&p.by)||"").trim();if(!nm)continue;
+    out.push({id,name:nm,at:+p.at||0,me:id===dev,on:id===dev||(now-(+p.at||0))<ONLINE_MS});
+  }
+  return out;
+}
+function ago(ms){const m=Math.round(ms/60000);if(m<1)return "just now";if(m<60)return m+" min ago";const h=Math.round(m/60);return h<24?h+" h ago":Math.round(h/24)+" d ago";}
+function renderWho(){
+  const wrap=$("#whoWrap");
+  if(!S||net.mode!=="shared"){wrap.hidden=true;return;}
+  wrap.hidden=false;
+  const l=onlineList(),on=l.filter(x=>x.on);
+  const n=Math.max(on.length,1);
+  $("#whoTxt").textContent=n+" online";
+  const pn=$("#whoPanel");
+  if(pn.hidden)return;
+  const seen=new Set(),rows=[];
+  const sorted=l.slice().sort((a,b)=>(b.on-a.on)||(b.at-a.at));
+  for(const x of sorted){
+    const k=nkey(x.name)+(x.on?"1":"0");if(seen.has(k))continue;seen.add(k);
+    rows.push(`<div class="wr${x.on?"":" off"}"><span class="dot${x.on?"":" gray"}"></span>${esc(x.name)}${x.me?" (you)":""}<small>${x.on?"online":ago(Date.now()-x.at)}</small></div>`);
+  }
+  pn.innerHTML=`<h4>${n} online now</h4>`+(rows.join("")||`<div class="wr off">Nobody yet</div>`);
+}
+function beat(){
+  if(document.hidden||!S||!S.sid||net.mode!=="shared"||!net.db||!net.canWrite||!myName)return;
+  net.db.doc("counts/"+S.sid+"/people/"+dev).set({by:myName,at:Date.now()}).catch(()=>{});
+}
+setInterval(()=>{beat();renderWho();},20000);
+document.addEventListener("visibilitychange",()=>{if(!document.hidden)beat();});
+document.addEventListener("click",e=>{
+  const pn=$("#whoPanel");if(!pn)return;
+  if(e.target.closest("#whoChip")){pn.hidden=!pn.hidden;renderWho();}
+  else if(!e.target.closest("#whoPanel"))pn.hidden=true;
+});
 function setLive(){
+  renderWho();
   const chip=$("#saveChip");if(!S){chip.hidden=true;return;}
   chip.hidden=false;
   const dot=$("#saveDot"),tx=$("#saveTxt");
