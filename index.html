@@ -216,6 +216,11 @@ tfoot tr:not(.trow) td{position:static;border-top:0;padding-top:4px}
 .saverow{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .saveinfo{margin:10px 0 0;color:var(--muted);font-size:13px}
 .topbar{padding:10px 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:8px;padding:4px 16px 12px}
+.chips button{border:1px solid var(--line-2);background:var(--surface);color:inherit;border-radius:999px;padding:7px 14px;font:600 13.5px var(--font-body);cursor:pointer;display:inline-flex;gap:8px;align-items:center}
+.chips button b{font:500 12px var(--font-mono);color:var(--muted)}
+.chips button.on{background:var(--accent);border-color:var(--accent);color:#2a1014}
+.chips button.on b{color:inherit}
 tr.flash td{animation:rowfl 1.4s ease-out}
 @keyframes rowfl{0%{background:var(--surface-2)}100%{background:transparent}}
 .okmark{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--ok);color:#fff}
@@ -457,6 +462,7 @@ td .t1{max-width:360px}
       <header><h2>Scan history <small id="hSub"></small></h2></header>
       <div class="filters">
         <input class="field grow" id="hq" type="search" placeholder="Search scans" aria-label="Search scan history">
+        <select class="field" id="hcat" aria-label="Category"></select>
         <select class="field" id="hwho" aria-label="Person"></select>
         <select class="field" id="hzone" aria-label="Zone"></select>
       </div>
@@ -466,10 +472,10 @@ td .t1{max-width:360px}
 
     <section class="panel tablecard" id="tablecard">
       <header><h2>ERP vs Actual <small id="tSub"></small></h2></header>
+      <div class="chips" id="tchips" role="group" aria-label="Category"></div>
       <div class="filters">
         <div class="seg" id="tseg" role="group" aria-label="Show"></div>
         <input class="field grow" id="tq" type="search" placeholder="Search name, SKU or barcode" aria-label="Search">
-        <select class="field" id="tcat" aria-label="Category"></select>
       </div>
       <div class="tablewrap"><table id="tbl"></table></div>
       <button class="btn more" id="tmore" type="button" hidden></button>
@@ -504,7 +510,7 @@ const blocks=new Map(),people=new Map();
 const dev="d"+Math.random().toString(36).slice(2,9);
 let myName="",curBlock=null,blockNo=0,joining=null,localFail=false,watchdog=0;
 const net={db:null,mode:"boot",canWrite:true,sid:null,unsubs:[],failed:0};
-const ui={hw:"",focusKey:"",open:new Set(),hq:"",hz:"",hlim:100,tab:"diff",cat:"",q:"",limit:150,muted:false,lastKey:-1,creating:false};
+const ui={hc:"",hw:"",focusKey:"",open:new Set(),hq:"",hz:"",hlim:100,tab:"diff",cat:"",q:"",limit:150,muted:false,lastKey:-1,creating:false};
 const locked=()=>!S||(net.mode==="shared"&&!net.canWrite);
 
 /* ---------- helpers ---------- */
@@ -784,8 +790,12 @@ function renderHist(){
   const ws=$("#hwho");
   if(document.activeElement!==ws)ws.innerHTML=names.map(([k,n])=>`<option value="${esc(k)}">${esc(n)}${k===nkey(myName)?" (you)":""}</option>`).join("")+'<option value="*">Everyone</option>';
   ws.value=(ui.hw==="*"||names.some(n=>n[0]===ui.hw))?ui.hw:"*";if(ws.value!==ui.hw)ui.hw=ws.value;
+  const cats=[...new Set(S.items.map(i=>i.cat))].sort();
+  const hs=$("#hcat");
+  if(document.activeElement!==hs)hs.innerHTML='<option value="">All categories</option>'+cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  hs.value=cats.includes(ui.hc)?ui.hc:"";if(hs.value!==ui.hc)ui.hc=hs.value;
   const q=norm(ui.hq);
-  const all=histGroups().filter(g=>(ui.hw==="*"||nkey(g.by)===ui.hw)&&(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
+  const all=histGroups().filter(g=>(!ui.hc||(g.i>=0&&S.items[g.i].cat===ui.hc))&&(ui.hw==="*"||nkey(g.by)===ui.hw)&&(!ui.hz||g.z===ui.hz)&&(!q||norm(g.raw).includes(q)||norm(g.by).includes(q)||norm(g.z).includes(q)||(g.i>=0&&norm(S.items[g.i].title).includes(q))));
   all.sort((a,b)=>b.last-a.last);
   $("#hSub").textContent=fmt(all.length)+(all.length===1?" item":" items");
   const can=!locked();
@@ -844,14 +854,16 @@ function renderTable(){
   const diffN=s.rows.filter(it=>it.d1!==0).length+unkAll.length,matchN=s.rows.filter(it=>it.d1===0).length,allN=s.rows.length+unkAll.length;
   $("#tseg").innerHTML=[["all","All",allN],["diff","Differences",diffN],["match","Matched",matchN]].map(t=>`<button type="button" data-t="${t[0]}" class="${ui.tab===t[0]?"on":""}">${t[1]}<b class="num">${fmt(t[2])}</b></button>`).join("");
   const q=norm(ui.q);
-  const base=s.rows.filter(it=>ui.tab==="all"||(ui.tab==="diff"?it.d1!==0:it.d1===0));
-  const cc=new Map();base.forEach(it=>cc.set(it.cat,(cc.get(it.cat)||0)+1));
+  const tabOk=it=>ui.tab==="all"||(ui.tab==="diff"?it.d1!==0:it.d1===0);
+  const extra=S.items.filter(it=>!it.inc&&(it.bal!==0||it.cnt!==0||it.cnt1!==0)&&tabOk(it));
+  const cc=new Map();
+  s.rows.filter(tabOk).forEach(it=>cc.set(it.cat,(cc.get(it.cat)||0)+1));
+  const left=new Set();
+  extra.forEach(it=>{cc.set(it.cat,(cc.get(it.cat)||0)+1);left.add(it.cat);});
   if(ui.cat&&!cc.has(ui.cat))ui.cat="";
-  const sel=$("#tcat");
-  if(document.activeElement!==sel){
-    sel.innerHTML=`<option value="">All categories</option>`+[...cc.entries()].sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<option value="${esc(c)}">${esc(c)} (${fmt(n)})</option>`).join("");
-  }
-  sel.value=ui.cat;
+  const base=s.rows.filter(tabOk).concat(ui.cat?extra.filter(it=>it.cat===ui.cat):[]);
+  const tot=[...cc.values()].reduce((a,n)=>a+n,0)-extra.length;
+  $("#tchips").innerHTML=`<button type="button" data-c="" class="${ui.cat?"":"on"}">All<b class="num">${fmt(tot+(ui.cat&&left.has(ui.cat)?0:0))}</b></button>`+[...cc.entries()].sort((a,b)=>b[1]-a[1]).map(([c,n])=>`<button type="button" data-c="${esc(c)}" class="${ui.cat===c?"on":""}">${esc(c)}${left.has(c)?" (left out)":""}<b class="num">${fmt(n)}</b></button>`).join("");
   const scanned=it=>it.cnt1>0||it.re!==null;
   let list=base.filter(it=>(!ui.cat||it.cat===ui.cat)&&(!q||norm(it.title).includes(q)||norm(it.sku).includes(q)||norm(it.barcode).includes(q)||norm(it.group).includes(q)));
   list.sort((a,b)=>(scanned(b)-scanned(a))||(scanned(a)?b.last-a.last:(a.cat.localeCompare(b.cat)||a.title.localeCompare(b.title))));
@@ -1428,7 +1440,7 @@ $("#tbl").addEventListener("keydown",e=>{
 });
 
 $("#tq").addEventListener("input",e=>{ui.q=e.target.value;ui.limit=150;renderTable();});
-$("#tcat").addEventListener("change",e=>{ui.cat=e.target.value;ui.limit=150;renderTable();});
+$("#tchips").addEventListener("click",e=>{const b=e.target.closest("button[data-c]");if(!b)return;ui.cat=b.dataset.c;ui.limit=150;renderTable();});
 $("#tmore").addEventListener("click",()=>{ui.limit+=150;renderTable();});
 $("#sum").addEventListener("click",e=>{
   if(!e.target.closest("#exclBtn")||!S||locked())return;
@@ -1444,6 +1456,7 @@ document.addEventListener("visibilitychange",()=>{if(document.hidden&&S)autoSave
 
 $("#hq").addEventListener("input",e=>{ui.hq=e.target.value;ui.hlim=100;renderHist();});
 $("#hwho").addEventListener("change",e=>{ui.hw=e.target.value;ui.hlim=100;renderHist();});
+$("#hcat").addEventListener("change",e=>{ui.hc=e.target.value;ui.hlim=100;renderHist();});
 $("#hzone").addEventListener("change",e=>{ui.hz=e.target.value;ui.hlim=100;renderHist();});
 $("#hmore").addEventListener("click",()=>{ui.hlim+=100;renderHist();});
 $("#zone").value=lsGet("pandora-stock-zone")||"";
