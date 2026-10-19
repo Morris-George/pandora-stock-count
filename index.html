@@ -880,7 +880,7 @@ function histGroups(){
     if(x.m===2)g.units=Math.max(0,x.n);else g.units+=x.n;
     if(x.t>=g.last){g.last=x.t;g.by=x.by;g.raw=x.raw;}
   }
-  return [...m.values()].map(g=>(g.units=Math.max(0,g.units),g)).filter(g=>g.i>=0||g.rc||g.units>0);
+  return [...m.values()].map(g=>(g.units=Math.max(0,g.units),g)).filter(g=>g.rc||g.units>0); /* scans that net to 0 units drop out of the history */
 }
 function renderHist(){
   const zs=[...new Set(S.scans.map(x=>x.z).filter(Boolean))].sort();
