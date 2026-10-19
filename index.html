@@ -777,7 +777,7 @@ function processScan(rawIn,opts){
   let n=1;const m=raw.match(/^(\d{1,4})\s*[*×]\s*(.+)$/);
   if(m){n=parseInt(m[1],10);raw=m[2].trim();}
   const i=lookup(raw);
-  if(!/^5700/.test(raw))setTimeout(()=>warnCode(raw),0);
+  if(!opts.typed&&!/^5700/.test(raw))setTimeout(()=>warnCode(raw),0); /* typed entries are never warned about */
   const t=Date.now();
   const b=getBlock();
   if(!nameLocked())lsSet(LOCKKEY,S.pid);
@@ -1610,9 +1610,10 @@ function rememberName(v){
 
 /* ---------- events ---------- */
 const scanEl=$("#scan");
+scanEl.addEventListener("input",()=>{if(!scanEl.value)delete scanEl.dataset.t0;else if(!scanEl.dataset.t0)scanEl.dataset.t0=Date.now();});
 scanEl.addEventListener("keydown",e=>{
   if(e.key==="Enter"||(e.key==="Tab"&&scanEl.value.trim())){
-    e.preventDefault();if(!zoneOk()){zoneNeeded();return;}const v=scanEl.value;scanEl.value="";processScan(v);
+    e.preventDefault();if(!zoneOk()){zoneNeeded();return;}const v=scanEl.value;scanEl.value="";const t0=+scanEl.dataset.t0||Date.now();delete scanEl.dataset.t0;const typed=v.trim().length>3&&(Date.now()-t0)/v.length>80; /* a scanner enters a whole code in a few ms; typing is much slower */processScan(v,{typed});
   }else if(e.key==="Escape"){scanEl.value="";}
 });
 document.addEventListener("keydown",e=>{
