@@ -1726,7 +1726,8 @@ $("#htbl").addEventListener("click",e=>{
 /* ---------- camera scanning and phone pairing ---------- */
 const ZX_SRC="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";
 const QR_SRC="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
-const cam={cand:"",candN:0,candAt:0,on:false,stream:null,track:null,det:null,zx:null,timer:0,last:"",lastAt:0,count:0,lastRaw:"",torch:false,cv:null,busy:false};
+const CAM_GAP=4000; /* minimum time between two counted scans */
+const cam={scanAt:0,waiting:false,cand:"",candN:0,candAt:0,on:false,stream:null,track:null,det:null,zx:null,timer:0,last:"",lastAt:0,count:0,lastRaw:"",torch:false,cv:null,busy:false};
 let phoneMode=false,phoneDone=false;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("Could not load the scanner library. Check the internet connection."));document.head.appendChild(s);});}
 function camSay(t){$("#camMsg").textContent=t||"";}
@@ -1761,7 +1762,7 @@ async function openCam(){
       cam.zx=new Z.MultiFormatReader();cam.hints=h;
       cam.cv=document.createElement("canvas");
     }
-    cam.on=true;
+    cam.on=true;cam.scanAt=0;cam.waiting=false;
     camSay("Point the camera at a barcode. It scans by itself.");
     camLoop();
   }catch(e){
@@ -1779,6 +1780,9 @@ function closeCam(){
 async function camLoop(){
   if(!cam.on)return;
   const v=$("#camVideo");let raw="";
+  const left=CAM_GAP-(Date.now()-cam.scanAt);
+  if(left>0){camSay("Next scan in "+Math.ceil(left/1000)+"s");cam.waiting=true;cam.timer=setTimeout(camLoop,150);return;}
+  if(cam.waiting){camSay("Point the camera at a barcode. It scans by itself.");cam.waiting=false;}
   if(v.readyState>=2&&v.videoWidth&&!cam.busy){
     cam.busy=true;
     try{
@@ -1794,7 +1798,7 @@ async function camLoop(){
     cam.busy=false;
   }
   if(raw)camHit(String(raw).trim());
-  cam.timer=setTimeout(camLoop,raw?150:110);
+  cam.timer=setTimeout(camLoop,30);
 }
 function camHit(raw){
   if(!raw||!S||locked())return;
@@ -1808,7 +1812,7 @@ function camHit(raw){
   cam.candAt=t;
   if(cam.candN<need)return;
   cam.cand="";cam.candN=0;
-  cam.last=raw;cam.lastAt=t;
+  cam.scanAt=t;cam.last=raw;cam.lastAt=t;
   camScan(raw);
 }
 function gtinOk(s){
