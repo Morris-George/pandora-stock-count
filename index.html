@@ -651,7 +651,10 @@ function mergeScans(){
     for(let k=0;k<b.scans.length;k++){const a=b.scans[k];if(cutSet.size&&cutSet.has(a[0]+"|"+a[1]+"|"+b.dev))continue;out.push({t:a[0],raw:a[1],i:a[2],n:a[3],z:a[4]||"",m:a[5]||0,by:a[6]||b.by,dev:b.dev,k,c:0,bid:b.id});}
   }
   out.sort((x,y)=>x.t-y.t||(x.dev<y.dev?-1:x.dev>y.dev?1:0)||x.k-y.k);
-  S.scans=out;
+  /* m:3 = "remove this not-in-ERP barcode": drops every earlier scan and recount of it, on every device */
+  const rm=new Map();
+  for(const s of out)if(s.m===3&&s.i<0)rm.set(s.raw,Math.max(rm.get(s.raw)||0,s.t));
+  S.scans=rm.size?out.filter(s=>s.m!==3&&!(s.i<0&&rm.has(s.raw)&&s.t<=rm.get(s.raw))):out;
 }
 function rebuildCounts(){
   S.items.forEach(it=>{it.cnt=0;it.cnt1=0;it.last=0;it.re=null;});
@@ -1869,10 +1872,9 @@ document.addEventListener("keydown",e=>{if(e.key==="Escape"&&cam.on)closeCam();}
 $("#tbl").addEventListener("click",e=>{
   const bt=e.target.closest(".urm");if(!bt||locked())return;
   const raw=bt.dataset.raw;
-  const gs=histGroups().filter(g=>g.i<0&&g.raw===raw&&!g.rc&&g.units>0);
-  if(!gs.length)return;
+  if(!S.scans.some(s=>s.i<0&&s.raw===raw)){scheduleRender();return;}
   const b=getBlock(),t=Date.now();
-  gs.forEach(g=>b.scans.push([t,raw,-1,-g.units,g.z,0,g.by||""]));
+  b.scans.push([t,raw,-1,0,"",3,myName||""]);
   markDirty(b);mergeScans();rebuildCounts();scheduleRender();
   toast("Removed "+raw);
 });
@@ -1880,10 +1882,12 @@ $("#tbl").addEventListener("click",e=>{
 /* ---------- start ---------- */
 async function start(){
   idleResult();
-  let name=(lsGet(NAMEKEY)||"").trim();
+  let name="";
+  const last=(lsGet(NAMEKEY)||"").trim();
   const ph=/[#&]phone=([^&]*)/.exec(location.hash);
   if(ph){phoneMode=true;let hn="";try{hn=decodeURIComponent(ph[1]).trim().replace(/\s+/g," ").slice(0,30);}catch(e){}if(hn)name=hn;}
-  if(!name){name=await openGate(false);}
+  /* every device is asked who is scanning each time it opens the site (a paired phone gets the name from its link) */
+  if(!name){if(last)myName=last;name=await openGate(false);}
   rememberName(name);
   $("#boot").hidden=false;
   await connect();
