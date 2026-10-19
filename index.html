@@ -1726,7 +1726,7 @@ $("#htbl").addEventListener("click",e=>{
 /* ---------- camera scanning and phone pairing ---------- */
 const ZX_SRC="https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js";
 const QR_SRC="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js";
-const cam={on:false,stream:null,track:null,det:null,zx:null,timer:0,last:"",lastAt:0,count:0,lastRaw:"",torch:false,cv:null,busy:false};
+const cam={cand:"",candN:0,candAt:0,on:false,stream:null,track:null,det:null,zx:null,timer:0,last:"",lastAt:0,count:0,lastRaw:"",torch:false,cv:null,busy:false};
 let phoneMode=false,phoneDone=false;
 function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=()=>rej(new Error("Could not load the scanner library. Check the internet connection."));document.head.appendChild(s);});}
 function camSay(t){$("#camMsg").textContent=t||"";}
@@ -1782,7 +1782,7 @@ async function camLoop(){
   if(v.readyState>=2&&v.videoWidth&&!cam.busy){
     cam.busy=true;
     try{
-      if(cam.det){const r=await cam.det.detect(v);if(r&&r.length)raw=r[0].rawValue||"";}
+      if(cam.det){const r=await cam.det.detect(v);if(r&&r.length){const vals=r.map(x=>String(x.rawValue||"").trim()).filter(Boolean);raw=vals.find(x=>lookup(x)>=0)||vals.find(gtinOk)||"";}}
       else{
         const c=cam.cv,w=Math.min(v.videoWidth,1280),h=Math.round(v.videoHeight*w/v.videoWidth);
         if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
@@ -1794,14 +1794,28 @@ async function camLoop(){
     cam.busy=false;
   }
   if(raw)camHit(String(raw).trim());
-  cam.timer=setTimeout(camLoop,raw?250:110);
+  cam.timer=setTimeout(camLoop,raw?150:110);
 }
 function camHit(raw){
   if(!raw||!S||locked())return;
   const t=Date.now();
   if(raw===cam.last&&t-cam.lastAt<1800){cam.lastAt=t;return;}
+  /* misread guard: a code that is not in the ERP must pass the barcode check digit, and every code must be read the same way several times in a row before it counts */
+  const known=lookup(raw)>=0;
+  if(!known&&!gtinOk(raw))return;
+  const need=known?2:3;
+  if(raw===cam.cand&&t-cam.candAt<700)cam.candN++;else{cam.cand=raw;cam.candN=1;}
+  cam.candAt=t;
+  if(cam.candN<need)return;
+  cam.cand="";cam.candN=0;
   cam.last=raw;cam.lastAt=t;
   camScan(raw);
+}
+function gtinOk(s){
+  if(!/^\d+$/.test(s)||![8,12,13,14].includes(s.length))return true;
+  const d=s.split("").map(Number),n=d.length;let sum=0;
+  for(let k=0;k<n-1;k++)sum+=d[n-2-k]*(k%2===0?3:1);
+  return (10-sum%10)%10===d[n-1];
 }
 function camShow(raw){
   const i=lookup(raw),it=i>=0?S.items[i]:null;
