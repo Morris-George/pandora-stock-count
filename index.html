@@ -1764,7 +1764,7 @@ async function openCam(){
     }
     cam.on=true;cam.scanAt=0;cam.waiting=false;
     camSay("Point the camera at a barcode. It scans by itself.");
-    camLoop();
+    camLoop(cam.gen=(cam.gen||0)+1);
   }catch(e){
     const n=e&&e.name;
     camSay(n==="NotAllowedError"?"The camera is blocked. Allow the camera for this site in the browser settings, then tap Close and Camera again.":n==="NotFoundError"?"No camera was found on this device.":((e&&e.message)||"The camera could not be started."));
@@ -1777,18 +1777,18 @@ function closeCam(){
   $("#camVideo").srcObject=null;$("#cam").hidden=true;document.body.style.overflow="";
   if(S&&!locked()&&!phoneMode)setTimeout(()=>scanEl.focus(),30);
 }
-async function camLoop(){
-  if(!cam.on)return;
+async function camLoop(g){
+  if(!cam.on||g!==cam.gen)return;
   const v=$("#camVideo");let raw="";
   const left=CAM_GAP-(Date.now()-cam.scanAt);
-  if(left>0){camSay("Next scan in "+Math.ceil(left/1000)+"s");cam.waiting=true;cam.timer=setTimeout(camLoop,150);return;}
+  if(left>0){camSay("Next scan in "+Math.ceil(left/1000)+"s");cam.waiting=true;cam.timer=setTimeout(()=>camLoop(g),150);return;}
   if(cam.waiting){camSay("Point the camera at a barcode. It scans by itself.");cam.waiting=false;}
   if(v.readyState>=2&&v.videoWidth&&!cam.busy){
     cam.busy=true;
     try{
       if(cam.det){const r=await cam.det.detect(v);if(r&&r.length){const vals=r.map(x=>String(x.rawValue||"").trim()).filter(Boolean);raw=vals.find(x=>lookup(x)>=0)||vals.find(gtinOk)||"";}}
       else{
-        const c=cam.cv,w=Math.min(v.videoWidth,1280),h=Math.round(v.videoHeight*w/v.videoWidth);
+        const c=cam.cv,w=Math.min(v.videoWidth,960),h=Math.round(v.videoHeight*w/v.videoWidth);
         if(c.width!==w||c.height!==h){c.width=w;c.height=h;}
         const x=c.getContext("2d",{willReadFrequently:true});x.drawImage(v,0,0,w,h);
         const Z=window.ZXing;
@@ -1798,7 +1798,8 @@ async function camLoop(){
     cam.busy=false;
   }
   if(raw)camHit(String(raw).trim());
-  cam.timer=setTimeout(camLoop,30);
+  if(v.requestVideoFrameCallback){try{v.requestVideoFrameCallback(()=>camLoop(g));return;}catch(e){}}
+  cam.timer=setTimeout(()=>camLoop(g),0);
 }
 function camHit(raw){
   if(!raw||!S||locked())return;
@@ -1807,7 +1808,7 @@ function camHit(raw){
   /* misread guard: a code that is not in the ERP must pass the barcode check digit, and every code must be read the same way several times in a row before it counts */
   const known=lookup(raw)>=0;
   if(!known&&!gtinOk(raw))return;
-  const need=known?2:3;
+  const need=known?1:2; /* an ERP barcode with a clean read counts at once; unknown codes need two matching reads */
   if(raw===cam.cand&&t-cam.candAt<700)cam.candN++;else{cam.cand=raw;cam.candN=1;}
   cam.candAt=t;
   if(cam.candN<need)return;
