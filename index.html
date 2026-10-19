@@ -969,21 +969,22 @@ function renderTable(){
   if(ui.tab!=="match"&&!ui.cat)unk=unkAll.filter(u=>!q||norm(u.raw).includes(q)).sort((a,b)=>b.last-a.last);
   const total=list.length+unk.length;
   $("#tSub").textContent=fmt(total)+(total===1?" row":" rows");
+  const RC=ui.tab==="diff"; /* recount columns only in the Differences view */
   const inp=(key,val)=>`<input class="rin" type="number" inputmode="numeric" min="0" step="1" data-k="${esc(key)}" value="${val===null?"":val}" placeholder="Count" aria-label="Recount (Actual 2.0)"${locked()?" disabled":""}>`;
   const finalCell=(re,d)=>re===null?`<span class="dim">–</span>`:(d===0?`<span class="pill zero">0</span>`:`<span class="pill ${d<0?"neg":"pos"}">${signed(d)}</span>`);
   const rows=[];
   for(const u of unk){
     const key="u:"+u.raw,z=zonesFor(x=>x.i<0&&x.raw===u.raw);
-    rows.push(`<tr class="rwarn"><td class="item"><div class="t1 mono">${esc(u.raw)}<span class="tag">Not in ERP</span></div><div class="t2">Scanned by ${esc(u.by||"")} at ${clock(u.last)}</div>${zbtn(key,z.length)}${locked()?"":`<button type="button" class="btn sm urm" data-raw="${esc(u.raw)}">Remove this scan</button>`}</td><td class="r num mono">–</td><td class="r num mono">${fmt(u.units1)}</td><td class="r"><span class="pill pos">${signed(u.units1)}</span></td><td class="r">${inp(key,u.re)}</td><td class="r">${finalCell(u.re,u.units)}</td></tr>`+zrow(key,z));
+    rows.push(`<tr class="rwarn"><td class="item"><div class="t1 mono">${esc(u.raw)}<span class="tag">Not in ERP</span></div><div class="t2">Scanned by ${esc(u.by||"")} at ${clock(u.last)}</div>${zbtn(key,z.length)}${locked()?"":`<button type="button" class="btn sm urm" data-raw="${esc(u.raw)}">Remove this scan</button>`}</td><td class="r num mono">–</td><td class="r num mono">${fmt(u.units1)}</td><td class="r"><span class="pill pos">${signed(u.units1)}</span></td>${RC?`<td class="r">${inp(key,u.re)}</td><td class="r">${finalCell(u.re,u.units)}</td>`:""}</tr>`+zrow(key,z));
   }
   const room=Math.max(0,ui.limit-rows.length);
   for(const it of list.slice(0,room)){
     const key="i:"+it.i;const sc=scanned(it);const z=sc?zonesFor(x=>x.i===it.i):[];
     const cls=sc?(it.d===0?"rok":"rwarn"):"";
-    rows.push(`<tr class="${cls} ${it.i===ui.lastKey?"flash":""}"><td class="item"><div class="t1">${esc(it.title)}</div><div class="t2">${esc(it.group)} · <span class="mono">${esc(it.barcode)}</span></div>${it.cnt1>0?zbtn(key,z.length):""}</td><td class="r num mono">${fmt(it.bal)}</td><td class="r num mono"><b>${fmt(it.cnt1)}</b></td><td class="r">${(()=>{const d=it.d1;return d===0?`<span class="pill zero">0</span>`:`<span class="pill ${d<0?"neg":"pos"}">${signed(d)}</span>`;})()}</td><td class="r">${it.d1!==0||it.re!==null?inp(key,it.re):""}</td><td class="r">${it.d1!==0||it.re!==null?finalCell(it.re,it.d):""}</td></tr>`+(it.cnt1>0?zrow(key,z):""));
+    rows.push(`<tr class="${cls} ${it.i===ui.lastKey?"flash":""}"><td class="item"><div class="t1">${esc(it.title)}</div><div class="t2">${esc(it.group)} · <span class="mono">${esc(it.barcode)}</span></div>${it.cnt1>0?zbtn(key,z.length):""}</td><td class="r num mono">${fmt(it.bal)}</td><td class="r num mono"><b>${fmt(it.cnt1)}</b></td><td class="r">${(()=>{const d=it.d1;return d===0?`<span class="pill zero">0</span>`:`<span class="pill ${d<0?"neg":"pos"}">${signed(d)}</span>`;})()}</td>${RC?`<td class="r">${it.d1!==0||it.re!==null?inp(key,it.re):""}</td><td class="r">${it.d1!==0||it.re!==null?finalCell(it.re,it.d):""}</td>`:""}</tr>`+(it.cnt1>0?zrow(key,z):""));
   }
   ui.lastKey=-1;
-  const head=`<thead><tr><th>Item</th><th class="r">ERP</th><th class="r">Actual</th><th class="r">Difference</th><th class="r">Actual 2.0<small class="hint">recount</small></th><th class="r">Final</th></tr></thead>`;
+  const head=`<thead><tr><th>Item</th><th class="r">ERP</th><th class="r">Actual</th><th class="r">Difference</th>${RC?`<th class="r">Actual 2.0<small class="hint">recount</small></th><th class="r">Final</th>`:""}</tr></thead>`;
   const empty=ui.tab==="diff"&&!total&&!q&&!ui.cat?"No differences. Everything counted matches the ERP.":"Nothing matches this filter.";
   let sh=0,ex=0,shN=0,exN=0,rcN=0,rcAll=0;
   for(const it of list){
@@ -995,8 +996,8 @@ function renderTable(){
   let tE=0,tA=0,tD1=0,tRe=0,tF=0;
   for(const it of list){tE+=it.bal;tA+=it.cnt1;tD1+=it.d1;if(it.re!==null)tRe+=it.re;tF+=it.d;}
   for(const u of unk){tA+=u.units1;tD1+=u.units1;if(u.re!==null)tRe+=u.re;tF+=u.units;}
-  const foot=`<tfoot><tr class="trow"><td>Total${ui.cat||q?" (filtered)":""}</td><td class="r num mono">${fmt(tE)}</td><td class="r num mono">${fmt(tA)}</td><td class="r"><span class="pill ${tD1<0?"neg":tD1>0?"pos":"zero"}">${signed(tD1)}</span></td><td class="r num mono">${fmt(tRe)}</td><td class="r"><span class="pill ${tF<0?"neg":tF>0?"pos":"zero"}">${signed(tF)}</span></td></tr><tr><td colspan="6"><div class="fsum"><span class="pill neg">Short ${fmt(sh)} units · ${fmt(shN)} items</span><span class="pill pos">Extra ${fmt(ex)} units · ${fmt(exN)} items</span><span class="dim">Recounted ${fmt(rcN)} of ${fmt(rcAll)}</span></div></td></tr></tfoot>`;
-  $("#tbl").innerHTML=head+(rows.length?`<tbody>${rows.join("")}</tbody>`:`<tbody><tr><td colspan="6" class="empty">${empty}</td></tr></tbody>`)+foot;
+  const foot=`<tfoot><tr class="trow"><td>Total${ui.cat||q?" (filtered)":""}</td><td class="r num mono">${fmt(tE)}</td><td class="r num mono">${fmt(tA)}</td><td class="r"><span class="pill ${tD1<0?"neg":tD1>0?"pos":"zero"}">${signed(tD1)}</span></td>${RC?`<td class="r num mono">${fmt(tRe)}</td><td class="r"><span class="pill ${tF<0?"neg":tF>0?"pos":"zero"}">${signed(tF)}</span></td>`:""}</tr><tr><td colspan="${RC?6:4}"><div class="fsum"><span class="pill neg">Short ${fmt(sh)} units · ${fmt(shN)} items</span><span class="pill pos">Extra ${fmt(ex)} units · ${fmt(exN)} items</span>${RC?`<span class="dim">Recounted ${fmt(rcN)} of ${fmt(rcAll)}</span>`:""}</div></td></tr></tfoot>`;
+  $("#tbl").innerHTML=head+(rows.length?`<tbody>${rows.join("")}</tbody>`:`<tbody><tr><td colspan="${RC?6:4}" class="empty">${empty}</td></tr></tbody>`)+foot;
   if(wasRin&&ui.focusKey){const el=[...document.querySelectorAll("#tbl .rin")].find(e=>e.dataset.k===ui.focusKey);if(el)el.focus();}
   const more=total-ui.limit;const mb=$("#tmore");mb.hidden=more<=0;if(more>0)mb.textContent="Show 150 more ("+fmt(more)+" hidden)";
 }
