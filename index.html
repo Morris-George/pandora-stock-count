@@ -402,6 +402,7 @@ td .t1{max-width:360px}
 #toast{position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translate(-50%,20px);background:var(--ink);color:var(--bg);padding:10px 18px;border-radius:12px;font-size:14px;opacity:0;transition:.25s;z-index:70;pointer-events:none;max-width:90vw;text-align:center}
 #toast.on{opacity:1;transform:translate(-50%,0)}
 .modal{position:fixed;inset:0;background:rgba(20,10,14,.5);z-index:80;display:grid;place-items:center;padding:20px}
+#warnModal h3{color:var(--bad)}
 .dialog{background:var(--surface);border-radius:20px;padding:24px;max-width:440px;width:100%;box-shadow:var(--shadow);border:1px solid var(--line)}
 .dialog h3{font:700 22px var(--font-display);margin:0 0 8px}
 .dialog p{color:var(--muted);margin:0 0 18px}
@@ -586,6 +587,7 @@ td .t1{max-width:360px}
     </div>
   </div>
 </div>
+<div class="modal" id="warnModal" hidden style="z-index:200"><div class="dialog" role="alertdialog" aria-modal="true" aria-labelledby="wTitle"><h3 id="wTitle">Check this barcode</h3><p id="wBody"></p><div class="acts"><button class="btn primary" id="wOk" type="button">OK</button></div></div></div>
 <div class="modal" id="modal" hidden><div class="dialog" role="dialog" aria-modal="true" aria-labelledby="mTitle"><h3 id="mTitle"></h3><p id="mBody"></p><div class="acts"><button class="btn" id="mNo" type="button">Cancel</button><button class="btn primary" id="mYes" type="button"></button></div></div></div>
 
 <script>
@@ -758,6 +760,15 @@ function pendingBlocks(){let n=0;blocks.forEach(b=>{if(b.dirty||b.busy)n++;});re
 function zoneOk(){return !!($("#zone").value||"").trim();}
 function zoneNeeded(){const el=$("#zone");el.classList.add("need");try{el.focus();}catch(e){}beep("bad");toast("Enter the zone first, then scan");}
 ["#zone","#camZone"].forEach(q=>$(q).addEventListener("input",e=>e.target.classList.remove("need")));
+let warnOpen=false;
+function warnCode(raw){
+  warnOpen=true;
+  $("#wBody").textContent="The scanned code "+raw+" does not start with 5700. It was counted, but it may be the wrong label or a misread. Check the item.";
+  $("#warnModal").hidden=false;beep("bad");
+  try{if(navigator.vibrate)navigator.vibrate([120,60,120]);}catch(e){}
+  $("#wOk").focus();
+  $("#wOk").onclick=()=>{$("#warnModal").hidden=true;warnOpen=false;$("#wOk").onclick=null;if(!cam.on&&S&&!locked())setTimeout(()=>scanEl.focus(),0);};
+}
 function processScan(rawIn,opts){
   opts=opts||{};
   if(locked())return;
@@ -766,6 +777,7 @@ function processScan(rawIn,opts){
   let n=1;const m=raw.match(/^(\d{1,4})\s*[*×]\s*(.+)$/);
   if(m){n=parseInt(m[1],10);raw=m[2].trim();}
   const i=lookup(raw);
+  if(!/^5700/.test(raw))setTimeout(()=>warnCode(raw),0);
   const t=Date.now();
   const b=getBlock();
   if(!nameLocked())lsSet(LOCKKEY,S.pid);
@@ -1604,7 +1616,7 @@ scanEl.addEventListener("keydown",e=>{
   }else if(e.key==="Escape"){scanEl.value="";}
 });
 document.addEventListener("keydown",e=>{
-  if(!S||locked()||!$("#modal").hidden||!$("#gate").hidden||e.ctrlKey||e.metaKey||e.altKey)return;
+  if(!S||locked()||warnOpen||!$("#modal").hidden||!$("#gate").hidden||e.ctrlKey||e.metaKey||e.altKey)return;
   const tag=e.target.tagName;
   if(tag==="INPUT"||tag==="TEXTAREA"||tag==="SELECT")return;
   if(e.key.length===1)scanEl.focus();
@@ -1784,6 +1796,7 @@ function closeCam(){
 }
 async function camLoop(g){
   if(!cam.on||g!==cam.gen)return;
+  if(warnOpen){cam.timer=setTimeout(()=>camLoop(g),200);return;}
   const v=$("#camVideo");let raw="";
   if(!($("#camZone").value||"").trim()){camSay("Enter a zone to start scanning");$("#camZone").classList.add("need");cam.waiting=true;cam.timer=setTimeout(()=>camLoop(g),200);return;}
   const left=CAM_GAP-(Date.now()-cam.scanAt);
