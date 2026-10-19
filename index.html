@@ -1610,10 +1610,13 @@ function rememberName(v){
 
 /* ---------- events ---------- */
 const scanEl=$("#scan");
-scanEl.addEventListener("input",()=>{if(!scanEl.value)delete scanEl.dataset.t0;else if(!scanEl.dataset.t0)scanEl.dataset.t0=Date.now();});
+scanEl.addEventListener("input",()=>{if(!scanEl.value){delete scanEl.dataset.t0;scanEl.dataset.n=0;}else{if(!scanEl.dataset.t0)scanEl.dataset.t0=Date.now();scanEl.dataset.n=(+scanEl.dataset.n||0)+1;}});
 scanEl.addEventListener("keydown",e=>{
   if(e.key==="Enter"||(e.key==="Tab"&&scanEl.value.trim())){
-    e.preventDefault();if(!zoneOk()){zoneNeeded();return;}const v=scanEl.value;scanEl.value="";const t0=+scanEl.dataset.t0||Date.now();delete scanEl.dataset.t0;const typed=v.trim().length>3&&(Date.now()-t0)/v.length>80; /* a scanner enters a whole code in a few ms; typing is much slower */processScan(v,{typed});
+    e.preventDefault();if(!zoneOk()){zoneNeeded();return;}const v=scanEl.value;scanEl.value="";const t0=+scanEl.dataset.t0||Date.now(),nIn=+scanEl.dataset.n||0;delete scanEl.dataset.t0;scanEl.dataset.n=0;
+    /* only a hardware scanner counts as "scanned": one key event per character, under ~30 ms each. Typing (even fast) and pasting are never warned about. */
+    const L=v.trim().length,scanned=L>=6&&nIn>=L*0.9&&(Date.now()-t0)/L<30;
+    processScan(v,{typed:!scanned});
   }else if(e.key==="Escape"){scanEl.value="";}
 });
 document.addEventListener("keydown",e=>{
